@@ -1,0 +1,7 @@
+# Зависимости и артефакты сборки
+deps/src/
+deps/build-*/
+deps/inst/
+build/
+*.bmp
+decoded_preview.png
