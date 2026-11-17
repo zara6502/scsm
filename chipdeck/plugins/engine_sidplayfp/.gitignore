@@ -4,3 +4,4 @@ deps/build-*/
 deps/inst/
 build/
 *.wav
+*.log
