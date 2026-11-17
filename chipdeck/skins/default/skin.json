@@ -1,0 +1,35 @@
+{
+  "api": 1,
+  "name": "ChipDeck Default",
+  "window": { "w": 320, "h": 160 },
+  "background": "#201a2c",
+  "tray": {
+    "idle": "tray_playing.png",
+    "playing": "tray_playing.png",
+    "paused": "tray_paused.png"
+  },
+  "elements": [
+    { "type": "image", "image": "bg.png", "x": 0, "y": 0 },
+    { "type": "text", "source": "title", "rect": [10, 6, 310, 20],
+      "color": "#f2eaff", "size": 13, "bold": 1 },
+    { "type": "text", "source": "author", "rect": [10, 28, 200, 16],
+      "color": "#a89ec2", "size": 11 },
+    { "type": "text", "source": "format", "rect": [220, 28, 90, 16],
+      "color": "#6d6488", "size": 11 },
+    { "type": "text", "source": "position", "rect": [10, 46, 80, 16],
+      "color": "#7ee787", "size": 12 },
+    { "type": "text", "source": "duration", "rect": [96, 46, 80, 16],
+      "color": "#55516b", "size": 12 },
+    { "type": "text", "source": "state", "rect": [240, 46, 70, 16],
+      "color": "#d0bfff", "size": 10 },
+    { "type": "progress", "rect": [10, 66, 300, 6],
+      "color": "#7ee787", "back": "#221e30" },
+    { "type": "button", "action": "prev", "image": "btn_prev.png", "x": 10, "y": 86 },
+    { "type": "button", "action": "play_pause", "image": "btn_play.png", "x": 60, "y": 86 },
+    { "type": "button", "action": "stop", "image": "btn_stop.png", "x": 166, "y": 86 },
+    { "type": "button", "action": "next", "image": "btn_next.png", "x": 242, "y": 86 },
+    { "type": "button", "action": "open", "image": "btn_open.png", "x": 10, "y": 122 },
+    { "type": "button", "action": "playlist", "image": "btn_list.png", "x": 116, "y": 122 },
+    { "type": "button", "action": "quit", "image": "btn_quit.png", "x": 222, "y": 122 }
+  ]
+}

@@ -1,8 +1,10 @@
-// Реализация UI. Скины — следующая итерация; сейчас встроенный вид на
-// стандартных контролах (дефолтный скин по DESIGN.ru.md раздел 4).
+// Реализация UI. Окно плеера: скин (Skin\skin.json) или встроенный вид
+// на стандартных контролах (fallback при отсутствии/ошибке скина).
 #include "ui.h"
+#include "skin.h"
 
 #include <commctrl.h>
+#include <windowsx.h>
 #include <commdlg.h>
 #include <shellapi.h>
 
@@ -63,6 +65,8 @@ struct UiState {
     HWND lib_status = nullptr;
     NOTIFYICONDATAW tray{};
     bool tray_added = false;
+    Skin skin;               // валиден, если skin_mode
+    bool skin_mode = false;
     std::vector<ChipLibEntry> lib_results;
     volatile int lib_cancel = 0;
 };
@@ -194,6 +198,16 @@ void update_player_statics() {
 void update_tray() {
     if (!g.tray_added) return;
     g.tray.uFlags = NIF_TIP;
+    if (g.skin_mode) {
+        const PlayState st = g.player->state();
+        HICON ic = st == PlayState::Playing ? g.skin.tray_playing
+                   : st == PlayState::Paused ? g.skin.tray_paused
+                                             : g.skin.tray_idle;
+        if (ic) {
+            g.tray.uFlags |= NIF_ICON;
+            g.tray.hIcon = ic;
+        }
+    }
     const PlayState st = g.player->state();
     wcsncpy(g.tray.szTip,
             st == PlayState::Playing ? L"ChipDeck — playing"
@@ -647,6 +661,90 @@ void build_library_window(HINSTANCE inst) {
 
 } // namespace
 
+
+// ---------- Skin: owner-draw окно плеера ----------
+
+static void skin_do_action(const std::string& action) {
+    if (action == "play_pause") {
+        g.player->toggle_pause();
+        update_tray();
+    } else if (action == "stop") {
+        g.player->stop();
+        update_tray();
+    } else if (action == "next") {
+        g.player->next();
+        update_tray();
+    } else if (action == "prev") {
+        g.player->prev();
+        update_tray();
+    } else if (action == "open") {
+        add_files(g.player_wnd);
+        refresh_list();
+    } else if (action == "playlist") {
+        ShowWindow(g.list_wnd, SW_SHOW);
+        SetForegroundWindow(g.list_wnd);
+    } else if (action == "quit") {
+        PostQuitMessage(0);
+    }
+}
+
+static void skin_paint(HWND w) {
+    PAINTSTRUCT ps;
+    HDC hdc = BeginPaint(w, &ps);
+    // двойная буферизация: без мерцания при таймере
+    HDC mem = CreateCompatibleDC(hdc);
+    HBITMAP bmp = CreateCompatibleBitmap(hdc, g.skin.w, g.skin.h);
+    HGDIOBJ old = SelectObject(mem, bmp);
+    skin_draw(mem, g.skin, *g.player);
+    BitBlt(hdc, 0, 0, g.skin.w, g.skin.h, mem, 0, 0, SRCCOPY);
+    SelectObject(mem, old);
+    DeleteObject(bmp);
+    DeleteDC(mem);
+    EndPaint(w, &ps);
+}
+
+LRESULT CALLBACK skin_wnd_proc(HWND w, UINT msg, WPARAM wp, LPARAM lp) {
+    switch (msg) {
+    case WM_PAINT:
+        skin_paint(w);
+        return 0;
+    case WM_TIMER:
+        InvalidateRect(w, nullptr, FALSE);
+        return 0;
+    case WM_LBUTTONDOWN: {
+        const int x = GET_X_LPARAM(lp);
+        const int y = GET_Y_LPARAM(lp);
+        if (const SkinButton* b = skin_hit_test(g.skin, x, y))
+            skin_do_action(b->action);
+        return 0;
+    }
+    case WM_DROPFILES:
+        handle_drop(HDROP(wp));
+        return 0;
+    case WM_CLOSE:
+        ShowWindow(w, SW_HIDE); // в лоток
+        return 0;
+    }
+    return DefWindowProcW(w, msg, wp, lp);
+}
+
+void build_skin_player_window(HINSTANCE inst) {
+    WNDCLASSEXW wc{sizeof(wc)};
+    wc.lpfnWndProc = skin_wnd_proc;
+    wc.hInstance = inst;
+    wc.lpszClassName = L"ChipDeckPlayer";
+    wc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
+    RegisterClassExW(&wc);
+
+    const DWORD style = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU |
+                        WS_MINIMIZEBOX;
+    const SIZE outer = outer_from_client(style, g.skin.w, g.skin.h);
+    g.player_wnd = CreateWindowExW(
+        0, L"ChipDeckPlayer", L"ChipDeck", style, CW_USEDEFAULT,
+        CW_USEDEFAULT, outer.cx, outer.cy, nullptr, nullptr, inst, nullptr);
+    DragAcceptFiles(g.player_wnd, TRUE);
+}
+
 int run_ui(EngineManager& em, LibraryManager& lm, Player& player,
            bool start_minimized) {
     g.em = &em;
@@ -673,7 +771,14 @@ int run_ui(EngineManager& em, LibraryManager& lm, Player& player,
     wcsncpy(g.tray.szTip, L"ChipDeck", 127);
     g.tray_added = Shell_NotifyIconW(NIM_ADD, &g.tray) != FALSE;
 
-    build_player_window(inst);
+    // Скин: Skin\skin.json рядом с exe; при ошибке — стандартный вид.
+    std::string skin_err;
+    if (skin_load(exe_dir() + L"\Skin", g.skin, skin_err)) {
+        g.skin_mode = true;
+        build_skin_player_window(inst);
+    } else {
+        build_player_window(inst);
+    }
     build_list_window(inst);
     if (lm.count() > 0) build_library_window(inst);
 

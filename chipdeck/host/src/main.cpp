@@ -10,6 +10,7 @@
 #include "engine_manager.h"
 #include "library_manager.h"
 #include "player.h"
+#include "skin.h"
 #include "ui.h"
 
 #include <cstdio>
@@ -17,7 +18,12 @@
 
 using namespace host;
 
+namespace host { extern int g_alphablend_failures; }
+
 int wmain(int argc, wchar_t** argv) {
+    // COM для WIC (скины) и WASAPI: один раз на весь процесс, MTA.
+    CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+
     // headless-режим GUI-приложения: подключаемся к консоли родителя.
     if (argc >= 2 && (wcscmp(argv[1], L"--play") == 0 ||
                       wcscmp(argv[1], L"--top") == 0)) {
@@ -75,6 +81,77 @@ int wmain(int argc, wchar_t** argv) {
                    &n, &cancel, &qerr);
         lm.disconnect_all();
         return n > 0 ? 0 : 4;
+    }
+
+    // ---- headless: визуальная проверка скина ----
+    if (argc >= 3 && wcscmp(argv[1], L"--skintest") == 0) {
+        std::printf("engines: %zu\n", loaded);
+        Skin skin;
+        std::string serr;
+        if (!skin_load(exe_dir() + L"\\Skin", skin, serr)) {
+            std::printf("skin_load FAILED: %s\n", serr.c_str());
+            return 3;
+        }
+        Player player;
+        if (!player.init(nullptr, &em)) return 4;
+        const int idx = player.add_file(argv[2]);
+        if (idx < 0 || !player.play(idx, 0)) {
+            std::printf("add/play FAILED\n");
+            return 5;
+        }
+        Sleep(800); // немного рендера
+
+        // рисуем скин в DIB и сохраняем BMP
+        const int W = skin.w, H = skin.h;
+        BITMAPINFO bi{};
+        bi.bmiHeader.biSize = sizeof(bi.bmiHeader);
+        bi.bmiHeader.biWidth = W;
+        bi.bmiHeader.biHeight = -H;
+        bi.bmiHeader.biPlanes = 1;
+        bi.bmiHeader.biBitCount = 24;
+        bi.bmiHeader.biCompression = BI_RGB;
+        HDC dc = CreateCompatibleDC(nullptr);
+        bi.bmiHeader.biBitCount = 32;
+        void* pbits = nullptr;
+        HBITMAP bmp = CreateDIBSection(dc, &bi, DIB_RGB_COLORS, &pbits,
+                                       nullptr, 0);
+        HDC mem = CreateCompatibleDC(dc);
+        HGDIOBJ old_bmp = SelectObject(mem, bmp);
+        skin_draw(mem, skin, player);
+        // 32bpp -> 24bpp BMP: читаем ИЗ БИТОВ DIB (pbits), а не из вектора
+        std::vector<uint8_t> out(size_t(W) * H * 3);
+        const uint8_t* dib_bits = static_cast<const uint8_t*>(pbits);
+        for (int y = 0; y < H; ++y)
+            for (int x = 0; x < W; ++x) {
+                const uint8_t* px = dib_bits + (size_t(y) * W + x) * 4;
+                uint8_t* o = out.data() + (size_t(y) * W + x) * 3;
+                o[0] = px[0]; o[1] = px[1]; o[2] = px[2];
+            }
+        BITMAPINFOHEADER bh{};
+        bh.biSize = sizeof(bh); bh.biWidth = W; bh.biHeight = -H;
+        bh.biPlanes = 1; bh.biBitCount = 24; bh.biCompression = BI_RGB;
+        BITMAPFILEHEADER fh{};
+        fh.bfType = 0x4D42;
+        fh.bfOffBits = sizeof(fh) + sizeof(bh);
+        fh.bfSize = DWORD(sizeof(fh) + sizeof(bh) + out.size());
+        FILE* f = std::fopen("skin_test.bmp", "wb");
+        std::fwrite(&fh, sizeof(fh), 1, f);
+        std::fwrite(&bh, sizeof(bh), 1, f);
+        std::fwrite(out.data(), 1, out.size(), f);
+        std::fclose(f);
+        DeleteDC(mem); DeleteDC(dc);
+        player.shutdown();
+        FILE* d = std::fopen("skin_diag.txt", "w");
+        if (d) {
+            std::fprintf(d, "bg=%d bgw=%d bgh=%d buttons=%u texts=%u prog=%u\n",
+                         skin.bg != nullptr, skin.bg_w, skin.bg_h,
+                         unsigned(skin.buttons.size()),
+                         unsigned(skin.texts.size()),
+                         unsigned(skin.progress.size()),
+                         g_alphablend_failures);
+            std::fclose(d);
+        }
+        return 0;
     }
 
     // ---- headless: воспроизведение ----

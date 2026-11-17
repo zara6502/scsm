@@ -11,7 +11,7 @@ ROOT="$(cd "$(dirname "$0")" && pwd)"
 DIST="$ROOT/dist/ChipDeck"
 
 rm -rf "$DIST"
-mkdir -p "$DIST/Engines" "$DIST/Libraries"
+mkdir -p "$DIST/Engines" "$DIST/Libraries" "$DIST/Skin"
 
 cp "$ROOT/host/build/chipdeck_host.exe" "$DIST/"
 
@@ -24,6 +24,11 @@ for lib in lib_botb; do
   src="$ROOT/plugins/$lib/build/Libraries/$lib.dll"
   [ -f "$src" ] && cp "$src" "$DIST/Libraries/" || echo "SKIP (не собран): $lib"
 done
+
+# скин по умолчанию
+if [ -d "$ROOT/skins/default" ]; then
+  cp "$ROOT/skins/default/"* "$DIST/Skin/"
+fi
 
 cat > "$DIST/README.txt" << 'EOF'
 ChipDeck — чиптюн-плеер в системном лотке (Windows x64)
