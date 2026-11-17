@@ -265,10 +265,12 @@ typedef struct ChipLibEntry {
     char title[CHP_LIB_TITLE_CAPACITY];
     char author[CHP_LIB_AUTHOR_CAPACITY];
     char format[CHP_LIB_FORMAT_CAPACITY];
+    char download_hint[256];       /* плагин кладёт сюда всё, что ему
+                                      нужно для Fetch (путь/URL/токен);
+                                      host не интерпретирует */
     uint32_t rating;               /* 0..1000, CHP_LIB_RATING_UNKNOWN */
     uint32_t duration_ms;          /* 0 если неизвестна */
     uint64_t size_bytes;
-    uint64_t reserved;
 } ChipLibEntry;
 
 /* запрос каталога */

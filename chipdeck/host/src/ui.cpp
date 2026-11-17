@@ -285,6 +285,17 @@ HWND make_control(HWND parent, const wchar_t* cls, const wchar_t* text,
     return c;
 }
 
+namespace {
+
+// Внешний размер окна из желаемого размера КЛИЕНТСКОЙ области.
+SIZE outer_from_client(DWORD style, int cw, int ch) {
+    RECT r{0, 0, cw, ch};
+    AdjustWindowRectEx(&r, style, FALSE, 0);
+    return {r.right - r.left, r.bottom - r.top};
+}
+
+} // namespace
+
 void build_player_window(HINSTANCE inst) {
     WNDCLASSEXW wc{sizeof(wc)};
     wc.lpfnWndProc = player_wnd_proc;
@@ -293,31 +304,36 @@ void build_player_window(HINSTANCE inst) {
     wc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
     RegisterClassExW(&wc);
 
-    const int W = 380, H = 170;
+    // Координаты — в клиентских пикселях; клиент 360x150.
+    const DWORD style = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU |
+                        WS_MINIMIZEBOX;
+    const SIZE outer = outer_from_client(style, 360, 150);
     g.player_wnd = CreateWindowExW(
-        0, L"ChipDeckPlayer", L"ChipDeck",
-        WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
-        CW_USEDEFAULT, CW_USEDEFAULT, W, H, nullptr, nullptr, inst, nullptr);
+        0, L"ChipDeckPlayer", L"ChipDeck", style,
+        CW_USEDEFAULT, CW_USEDEFAULT, outer.cx, outer.cy, nullptr, nullptr,
+        inst, nullptr);
     DragAcceptFiles(g.player_wnd, TRUE);
 
-    make_control(g.player_wnd, WC_STATICW, L"", SS_LEFTNOWORDWRAP, 10, 8,
-                 350, 22, kIdStaticTitle);
-    make_control(g.player_wnd, WC_STATICW, L"", SS_LEFTNOWORDWRAP, 10, 32,
-                 350, 18, kIdStaticSub);
+    make_control(g.player_wnd, WC_STATICW, L"", SS_LEFTNOWORDWRAP, 10, 6,
+                 340, 20, kIdStaticTitle);
+    make_control(g.player_wnd, WC_STATICW, L"", SS_LEFTNOWORDWRAP, 10, 28,
+                 340, 18, kIdStaticSub);
     make_control(g.player_wnd, WC_STATICW, L"0:00", SS_LEFTNOWORDWRAP, 10,
-                 52, 350, 18, kIdStaticPos);
-    make_control(g.player_wnd, WC_BUTTONW, L"|<", 0, 10, 90, 44, 26, kIdPrev);
-    make_control(g.player_wnd, WC_BUTTONW, L"Play/Pause", 0, 60, 90, 90, 26,
+                 48, 340, 18, kIdStaticPos);
+    // транспорт
+    make_control(g.player_wnd, WC_BUTTONW, L"|<", 0, 10, 74, 44, 26, kIdPrev);
+    make_control(g.player_wnd, WC_BUTTONW, L"Play/Pause", 0, 60, 74, 100, 26,
                  kIdToggle);
-    make_control(g.player_wnd, WC_BUTTONW, L"Stop", 0, 156, 90, 60, 26,
+    make_control(g.player_wnd, WC_BUTTONW, L"Stop", 0, 166, 74, 70, 26,
                  kIdStop);
-    make_control(g.player_wnd, WC_BUTTONW, L">|", 0, 222, 90, 44, 26,
+    make_control(g.player_wnd, WC_BUTTONW, L">|", 0, 242, 74, 44, 26,
                  kIdNext);
-    make_control(g.player_wnd, WC_BUTTONW, L"Open...", 0, 10, 124, 100, 26,
+    // нижний ряд — до 138, клиент 150, запас есть
+    make_control(g.player_wnd, WC_BUTTONW, L"Open...", 0, 10, 108, 100, 26,
                  kIdOpen);
-    make_control(g.player_wnd, WC_BUTTONW, L"Playlist", 0, 116, 124, 100, 26,
+    make_control(g.player_wnd, WC_BUTTONW, L"Playlist", 0, 116, 108, 100, 26,
                  kIdPlaylist);
-    make_control(g.player_wnd, WC_BUTTONW, L"Quit", 0, 270, 124, 90, 26,
+    make_control(g.player_wnd, WC_BUTTONW, L"Quit", 0, 222, 108, 90, 26,
                  kIdQuit);
 }
 
@@ -329,24 +345,27 @@ void build_list_window(HINSTANCE inst) {
     wc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
     RegisterClassExW(&wc);
 
-    const int W = 460, H = 320;
+    const int cw = 460, ch = 320; // клиентская область
+    const DWORD style =
+        WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_SIZEBOX;
+    const SIZE outer = outer_from_client(style, cw, ch);
     g.list_wnd = CreateWindowExW(
-        0, L"ChipDeckPlaylist", L"ChipDeck — Playlist",
-        WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_SIZEBOX,
-        CW_USEDEFAULT, CW_USEDEFAULT, W, H, nullptr, nullptr, inst, nullptr);
+        0, L"ChipDeckPlaylist", L"ChipDeck — Playlist", style,
+        CW_USEDEFAULT, CW_USEDEFAULT, outer.cx, outer.cy, nullptr, nullptr,
+        inst, nullptr);
     DragAcceptFiles(g.list_wnd, TRUE);
 
     g.list_box = CreateWindowExW(
         WS_EX_CLIENTEDGE, WC_LISTBOXW, nullptr,
         WS_CHILD | WS_VISIBLE | WS_VSCROLL | LBS_NOTIFY | LBS_HASSTRINGS |
             LBS_NOINTEGRALHEIGHT,
-        8, 8, W - 24, H - 70, g.list_wnd,
+        8, 8, cw - 16, ch - 66, g.list_wnd,
         reinterpret_cast<HMENU>(UINT_PTR(kIdList)), nullptr, nullptr);
     SendMessageW(g.list_box, WM_SETFONT,
                  WPARAM(GetStockObject(DEFAULT_GUI_FONT)), TRUE);
-    make_control(g.list_wnd, WC_BUTTONW, L"Add...", 0, 8, H - 56, 90, 26,
+    make_control(g.list_wnd, WC_BUTTONW, L"Add...", 0, 8, ch - 50, 90, 26,
                  kIdAdd);
-    make_control(g.list_wnd, WC_BUTTONW, L"Remove", 0, 104, H - 56, 90, 26,
+    make_control(g.list_wnd, WC_BUTTONW, L"Remove", 0, 104, ch - 50, 90, 26,
                  kIdRemove);
 }
 

@@ -26,7 +26,7 @@ cmake -S "$SRC" -B "$ROOT/deps/build" -G Ninja \
   -DUSE_GME_AY=ON \
   -DUSE_GME_SAP=ON \
   -DUSE_GME_GBS=OFF -DUSE_GME_GYM=OFF -DUSE_GME_HES=OFF \
-  -DUSE_GME_KSS=OFF -DUSE_GME_NSF=OFF -DUSE_GME_NSFE=OFF \
+  -DUSE_GME_KSS=OFF -DUSE_GME_NSF=ON -DUSE_GME_NSFE=ON \
   -DUSE_GME_SPC=OFF -DUSE_GME_VGM=OFF
 cmake --build "$ROOT/deps/build" --target install
 

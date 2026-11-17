@@ -52,7 +52,9 @@ void close_session(Session* s) {
 // Форматы, которые берёт на себя этот движок (остальные форматы GME
 // отключены в сборке и должны оставаться чужим полем деятельности).
 bool format_supported(const char* fmt) {
-    return fmt && (std::strcmp(fmt, "AY") == 0 || std::strcmp(fmt, "SAP") == 0);
+    return fmt && (std::strcmp(fmt, "AY") == 0 || std::strcmp(fmt, "SAP") == 0 ||
+                   std::strcmp(fmt, "NSF") == 0 ||
+                   std::strcmp(fmt, "NSFE") == 0);
 }
 
 } // namespace
@@ -229,9 +231,11 @@ CHP_EXPORT uint32_t CHP_CALL ChipEngineGetTrackInfo(ChipHandle handle,
     if (std::strcmp(s->format, "AY") == 0) {
         std::snprintf(info->format, sizeof(info->format), "%s",
                       "AY (ZX Spectrum)");
-    } else {
+    } else if (std::strcmp(s->format, "SAP") == 0) {
         std::snprintf(info->format, sizeof(info->format), "%s",
                       "SAP (Atari POKEY)");
+    } else {
+        std::snprintf(info->format, sizeof(info->format), "%s", "NSF (NES)");
     }
     if (gi->play_length > 0) {
         info->duration_ms = uint32_t(gi->play_length);
