@@ -10,6 +10,10 @@
   - [engine_sidplayfp](plugins/engine_sidplayfp) — **рабочий движок** на
     libsidplayfp 3.1.2 + libresidfp 1.3.0: C64 SID (.sid, PSID/RSID),
     модель чипа из заголовка тюна, mono → stereo.
+  - [engine_openmpt](plugins/engine_openmpt) — **рабочий движок** на
+    libopenmpt 0.8.10: трекерные форматы MOD/S3M/XM/IT/MTM/MO3/...
+    (полный список в extensions движка), sub-songs, честная длительность,
+    Seek.
   - [engine_stub](plugins/engine_stub) — заглушка для проверки ABI.
 - **ChipLibrary** — провайдеры онлайн-библиотек с рейтингами
   (ModArchive, BotB). В v1 — только дизайн.
@@ -37,6 +41,12 @@ cd ../engine_sidplayfp
 bash build-deps.sh   # статические libresidfp + libsidplayfp → deps/inst
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release && cmake --build build
 ./build/sid_test.exe build/Engines/engine_sidplayfp.dll <файл.sid> out.wav
+
+# Рабочий движок OpenMPT (MOD/S3M/XM/IT) — нужны autotools в MSYS2
+cd ../engine_openmpt
+bash build-deps.sh   # статическая libopenmpt 0.8.10 → deps/inst
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release && cmake --build build
+./build/ompt_test.exe build/Engines/engine_openmpt.dll <файл.mod|s3m|xm|it> out.wav
 ```
 
 Тест GME проверяет: Probe, Open (включая отказ на мусоре), подтюны,
