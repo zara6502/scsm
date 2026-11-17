@@ -68,7 +68,10 @@ CHP_EXPORT uint32_t CHP_CALL ChipEngineGetInfo(ChipEngineInfo* info) {
     std::snprintf(info->id, sizeof(info->id), "%s", "gme");
     std::snprintf(info->name, sizeof(info->name), "%s",
                   "GME (ZX AY / Atari POKEY)");
-    std::snprintf(info->extensions, sizeof(info->extensions), "%s", "ay;sap");
+    // .emul — вариант именования .ay на ModLand; Probe распознаёт по
+    // содержимому (ZXAYEMUL), расширение влияет только на фильтр диалога.
+    std::snprintf(info->extensions, sizeof(info->extensions), "%s",
+                  "ay;emul;sap");
     return 1;
 }
 

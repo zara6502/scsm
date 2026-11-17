@@ -1,0 +1,6 @@
+deps/src/
+deps/src-residfp/
+deps/build-*/
+deps/inst/
+build/
+*.wav
