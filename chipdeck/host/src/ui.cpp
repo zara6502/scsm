@@ -7,6 +7,8 @@
 #include <shellapi.h>
 
 #include <cstring>
+#include <fstream>
+#include <thread>
 
 namespace host {
 
@@ -29,19 +31,67 @@ constexpr UINT kIdRemove = 1011;
 constexpr UINT kIdStaticTitle = 1012;
 constexpr UINT kIdStaticSub = 1013;
 constexpr UINT kIdStaticPos = 1014;
+constexpr UINT kIdShowLibrary = 1015;
+constexpr UINT kIdLibCombo = 1016;
+constexpr UINT kIdLibEdit = 1017;
+constexpr UINT kIdLibGo = 1018;
+constexpr UINT kIdLibList = 1019;
+constexpr UINT kIdLibStatus = 1020;
+
+constexpr UINT kMsgLibResult = WM_APP + 3;   // ответ Query (heap vector)
+constexpr UINT kMsgLibFetched = WM_APP + 4;  // загрузка завершена (heap)
+
+// определены ниже (раздел Library)
+struct FetchResultPayload;
+static void lib_set_status(const wchar_t* t);
+static void lib_fill_list();
+static void lib_handle_fetched(FetchResultPayload* p);
 
 // --- глобальное состояние UI-потока ---
 struct UiState {
     EngineManager* em = nullptr;
+    LibraryManager* lm = nullptr;
     Player* player = nullptr;
     HWND main_wnd = nullptr;
     HWND player_wnd = nullptr;
     HWND list_wnd = nullptr;
     HWND list_box = nullptr;
+    HWND lib_wnd = nullptr;
+    HWND lib_combo = nullptr;
+    HWND lib_edit = nullptr;
+    HWND lib_list = nullptr;
+    HWND lib_status = nullptr;
     NOTIFYICONDATAW tray{};
     bool tray_added = false;
+    std::vector<ChipLibEntry> lib_results;
+    volatile int lib_cancel = 0;
 };
 UiState g;
+
+// --- общий тред-пейлоад для PostMessage ---
+struct AsyncPayload {
+    virtual ~AsyncPayload() {}
+};
+
+struct QueryResultPayload : AsyncPayload {
+    std::vector<ChipLibEntry> entries; // успешный ответ
+    std::string error;                 // или ошибка
+};
+
+struct FetchResultPayload : AsyncPayload {
+    std::wstring path;        // файл в кеше (успех)
+    ChipLibEntry entry;       // что скачивали
+    std::string error;        // или ошибка
+};
+
+// Кеш: exe_dir/cache/<lib_id>/.
+std::wstring cache_dir_for(const char* lib_id) {
+    const std::wstring dir =
+        exe_dir() + L"\\cache\\" + utf8_to_wide(lib_id);
+    CreateDirectoryW((exe_dir() + L"\\cache").c_str(), nullptr);
+    CreateDirectoryW(dir.c_str(), nullptr);
+    return dir;
+}
 
 void refresh_list() {
     SendMessageW(g.list_box, LB_RESETCONTENT, 0, 0);
@@ -236,6 +286,8 @@ LRESULT CALLBACK main_wnd_proc(HWND w, UINT msg, WPARAM wp, LPARAM lp) {
             AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
             AppendMenuW(menu, MF_STRING, kIdShowPlayer, L"Player");
             AppendMenuW(menu, MF_STRING, kIdPlaylist, L"Playlist");
+            if (g.lm->count() > 0)
+                AppendMenuW(menu, MF_STRING, kIdShowLibrary, L"Library");
             AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
             AppendMenuW(menu, MF_STRING, kIdQuit, L"Quit");
             SetForegroundWindow(w);
@@ -262,10 +314,35 @@ LRESULT CALLBACK main_wnd_proc(HWND w, UINT msg, WPARAM wp, LPARAM lp) {
             ShowWindow(g.list_wnd, SW_SHOW);
             SetForegroundWindow(g.list_wnd);
             return 0;
+        case kIdShowLibrary:
+            if (g.lib_wnd) {
+                ShowWindow(g.lib_wnd, SW_SHOW);
+                SetForegroundWindow(g.lib_wnd);
+            }
+            return 0;
         case kIdQuit: PostQuitMessage(0); return 0;
         }
         break;
     }
+    case kMsgLibResult: {
+        // Query завершился в фоне
+        auto* p = reinterpret_cast<QueryResultPayload*>(lp);
+        g.lib_results = std::move(p->entries);
+        lib_fill_list();
+        if (!p->error.empty()) {
+            const std::wstring msg = utf8_to_wide(p->error);
+            lib_set_status(msg.c_str());
+        } else {
+            wchar_t st[64];
+            swprintf(st, 64, L"%u results", unsigned(g.lib_results.size()));
+            lib_set_status(st);
+        }
+        delete p;
+        return 0;
+    }
+    case kMsgLibFetched:
+        lib_handle_fetched(reinterpret_cast<FetchResultPayload*>(lp));
+        return 0;
     case WM_DESTROY:
         if (g.tray_added) Shell_NotifyIconW(NIM_DELETE, &g.tray);
         PostQuitMessage(0);
@@ -369,10 +446,211 @@ void build_list_window(HINSTANCE inst) {
                  kIdRemove);
 }
 
+// ---------- Library: окно онлайн-библиотек ----------
+
+static void lib_set_status(const wchar_t* t) {
+    SetWindowTextW(g.lib_status, t);
+}
+
+// Query в отдельном потоке (блокирующий контракт).
+static void lib_start_query(uint32_t lib_idx, uint32_t qtype,
+                            const std::string& text) {
+    LibraryManager* lm = g.lm;
+    volatile int* cancel = &g.lib_cancel;
+    *cancel = 0;
+    std::thread([lm, lib_idx, qtype, text, cancel]() {
+        auto* payload = new QueryResultPayload();
+        ChipLibRequest req{};
+        req.struct_size = sizeof(req);
+        req.query_type = qtype;
+        req.limit = 25;
+        req.text = text.c_str();
+        ChipError err{};
+        LibModule& m = lm->mutable_at(lib_idx);
+        if (!m.session) lm->connect_all();
+        const uint32_t ok =
+            m.query_fn(m.session, &req,
+                       [](void* user, const ChipLibEntry* e) -> uint32_t {
+                           auto* p = static_cast<QueryResultPayload*>(user);
+                           p->entries.push_back(*e);
+                           return 0; // собираем все
+                       },
+                       payload, cancel, &err);
+        if (!ok && payload->entries.empty()) {
+            payload->error = err.message;
+        }
+        PostMessageW(g.main_wnd, kMsgLibResult, 0,
+                     reinterpret_cast<LPARAM>(payload));
+    }).detach();
+    lib_set_status(L"querying...");
+}
+
+// Fetch в отдельном потоке: скачать -> кеш -> плейлист -> играть.
+static void lib_start_fetch(uint32_t lib_idx, const ChipLibEntry& entry) {
+    LibraryManager* lm = g.lm;
+    volatile int* cancel = &g.lib_cancel;
+    std::thread([lm, lib_idx, entry, cancel]() {
+        auto* payload = new FetchResultPayload();
+        payload->entry = entry;
+
+        LibModule& m = lm->mutable_at(lib_idx);
+        if (!m.session) lm->connect_all();
+
+        uint8_t* data = nullptr;
+        size_t size = 0;
+        ChipError err{};
+        lib_set_status(L"downloading...");
+        if (m.fetch_fn(m.session, &entry, nullptr, nullptr, cancel, &data,
+                       &size, &err)) {
+            // сохраняем в кеш с расширением формата
+            const std::wstring dir = cache_dir_for(m.info.id);
+            std::string fname = entry.entry_id;
+            for (char& c : fname)
+                if (!std::isalnum((unsigned char)c) && c != '-' && c != '_')
+                    c = '_';
+            const std::wstring path = dir + L"\\" +
+                utf8_to_wide(fname) + L"." + utf8_to_wide(entry.format);
+            std::ofstream f(path.c_str(), std::ios::binary);
+            if (f) {
+                f.write(reinterpret_cast<const char*>(data),
+                        std::streamsize(size));
+                f.close();
+                if (f.good()) payload->path = path;
+            }
+            m.free_buffer(m.session, data);
+            if (payload->path.empty()) payload->error = "cache write failed";
+        } else {
+            payload->error = err.message;
+        }
+        PostMessageW(g.main_wnd, kMsgLibFetched, 0,
+                     reinterpret_cast<LPARAM>(payload));
+    }).detach();
+}
+
+static void lib_fill_list() {
+    SendMessageW(g.lib_list, LB_RESETCONTENT, 0, 0);
+    for (size_t i = 0; i < g.lib_results.size(); ++i) {
+        const ChipLibEntry& e = g.lib_results[i];
+        char row[512];
+        std::snprintf(row, sizeof(row), "%.3u. %-28s - %.24s  [%s]",
+                      unsigned(i + 1), e.title, e.author, e.format);
+        const int idx = SendMessageA(g.lib_list, LB_ADDSTRING, 0,
+                                     LPARAM(row));
+        SendMessageA(g.lib_list, LB_SETITEMDATA, WPARAM(idx), LPARAM(i));
+    }
+}
+
+static void lib_handle_fetched(FetchResultPayload* p) {
+    if (p->path.empty()) {
+        const std::wstring msg = utf8_to_wide(p->error);
+        MessageBoxW(g.lib_wnd, msg.c_str(), L"ChipDeck - download",
+                    MB_ICONWARNING);
+        lib_set_status(L"download failed");
+    } else {
+        lib_set_status(L"adding to playlist...");
+        const int idx = g.player->add_file(p->path);
+        if (idx >= 0) {
+            g.player->play(idx);
+            refresh_list();
+            update_tray();
+            lib_set_status(L"playing");
+        } else {
+            lib_set_status(L"no engine for this format");
+        }
+    }
+    delete p;
+}
+
+LRESULT CALLBACK lib_wnd_proc(HWND w, UINT msg, WPARAM wp, LPARAM lp) {
+    switch (msg) {
+    case WM_COMMAND:
+        switch (LOWORD(wp)) {
+        case kIdLibGo: {
+            wchar_t qtext[128] = {};
+            GetWindowTextW(g.lib_edit, qtext, 128);
+            const int sel = int(SendMessageW(g.lib_combo, CB_GETCURSEL, 0, 0));
+            const uint32_t qtype =
+                sel <= 0 ? CHP_QUERY_TOP
+                         : (sel == 1 ? CHP_QUERY_SEARCH : CHP_QUERY_RANDOM);
+            lib_start_query(0, qtype,
+                            sel == 1 ? wide_to_utf8(qtext) : std::string());
+            return 0;
+        }
+        case kIdLibList:
+            if (HIWORD(wp) == LBN_DBLCLK) {
+                int sel = int(SendMessageW(g.lib_list, LB_GETCURSEL, 0, 0));
+                if (sel != LB_ERR && sel < int(g.lib_results.size())) {
+                    lib_start_fetch(0, g.lib_results[size_t(sel)]);
+                }
+            }
+            return 0;
+        }
+        break;
+    case WM_CLOSE:
+        ShowWindow(w, SW_HIDE);
+        return 0;
+    }
+    return DefWindowProcW(w, msg, wp, lp);
+}
+
+void build_library_window(HINSTANCE inst) {
+    WNDCLASSEXW wc{sizeof(wc)};
+    wc.lpfnWndProc = lib_wnd_proc;
+    wc.hInstance = inst;
+    wc.lpszClassName = L"ChipDeckLibrary";
+    wc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
+    RegisterClassExW(&wc);
+
+    const int cw = 480, ch = 360;
+    const DWORD style =
+        WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX;
+    const SIZE outer = outer_from_client(style, cw, ch);
+    g.lib_wnd = CreateWindowExW(
+        0, L"ChipDeckLibrary", L"ChipDeck - Library", style,
+        CW_USEDEFAULT, CW_USEDEFAULT, outer.cx, outer.cy, nullptr, nullptr,
+        inst, nullptr);
+
+    g.lib_combo = CreateWindowExW(
+        0, WC_COMBOBOXW, nullptr, WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST,
+        8, 8, 110, 200, g.lib_wnd,
+        reinterpret_cast<HMENU>(UINT_PTR(kIdLibCombo)), nullptr, nullptr);
+    SendMessageW(g.lib_combo, CB_ADDSTRING, 0, LPARAM(L"Top rated"));
+    SendMessageW(g.lib_combo, CB_ADDSTRING, 0, LPARAM(L"Search"));
+    SendMessageW(g.lib_combo, CB_ADDSTRING, 0, LPARAM(L"Random"));
+    SendMessageW(g.lib_combo, CB_SETCURSEL, 0, 0);
+    SendMessageW(g.lib_combo, WM_SETFONT,
+                 WPARAM(GetStockObject(DEFAULT_GUI_FONT)), TRUE);
+
+    g.lib_edit = CreateWindowExW(WS_EX_CLIENTEDGE, WC_EDITW, nullptr,
+                                 WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL,
+                                 124, 9, 250, 22, g.lib_wnd,
+                                 reinterpret_cast<HMENU>(UINT_PTR(kIdLibEdit)),
+                                 nullptr, nullptr);
+    SendMessageW(g.lib_edit, WM_SETFONT,
+                 WPARAM(GetStockObject(DEFAULT_GUI_FONT)), TRUE);
+    make_control(g.lib_wnd, WC_BUTTONW, L"Go", 0, 380, 8, 60, 24, kIdLibGo);
+
+    g.lib_list = CreateWindowExW(
+        WS_EX_CLIENTEDGE, WC_LISTBOXW, nullptr,
+        WS_CHILD | WS_VISIBLE | WS_VSCROLL | LBS_NOTIFY | LBS_HASSTRINGS,
+        8, 36, cw - 16, ch - 92, g.lib_wnd,
+        reinterpret_cast<HMENU>(UINT_PTR(kIdLibList)), nullptr, nullptr);
+    SendMessageW(g.lib_list, WM_SETFONT,
+                 WPARAM(GetStockObject(DEFAULT_GUI_FONT)), TRUE);
+
+    g.lib_status = CreateWindowExW(0, WC_STATICW, L"", WS_CHILD | WS_VISIBLE,
+                                   8, ch - 48, cw - 16, 20, g.lib_wnd,
+                                   nullptr, nullptr, nullptr);
+    SendMessageW(g.lib_status, WM_SETFONT,
+                 WPARAM(GetStockObject(DEFAULT_GUI_FONT)), TRUE);
+}
+
 } // namespace
 
-int run_ui(EngineManager& em, Player& player, bool start_minimized) {
+int run_ui(EngineManager& em, LibraryManager& lm, Player& player,
+           bool start_minimized) {
     g.em = &em;
+    g.lm = &lm;
     g.player = &player;
 
     const HINSTANCE inst = GetModuleHandleW(nullptr);
@@ -397,6 +675,7 @@ int run_ui(EngineManager& em, Player& player, bool start_minimized) {
 
     build_player_window(inst);
     build_list_window(inst);
+    if (lm.count() > 0) build_library_window(inst);
 
     if (!player.init(g.main_wnd, &em)) {
         MessageBoxW(nullptr, L"WASAPI init failed", L"ChipDeck", MB_ICONERROR);
@@ -412,6 +691,7 @@ int run_ui(EngineManager& em, Player& player, bool start_minimized) {
         DispatchMessageW(&m);
     }
     player.shutdown();
+    lm.disconnect_all();
     return 0;
 }
 

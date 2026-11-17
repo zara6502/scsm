@@ -5,6 +5,7 @@ add_executable(chipdeck_host WIN32
   src/main.cpp
   src/common.cpp
   src/engine_manager.cpp
+  src/library_manager.cpp
   src/audio.cpp
   src/player.cpp
   src/ui.cpp

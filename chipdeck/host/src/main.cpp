@@ -8,6 +8,7 @@
 
 #include "common.h"
 #include "engine_manager.h"
+#include "library_manager.h"
 #include "player.h"
 #include "ui.h"
 
@@ -18,13 +19,15 @@ using namespace host;
 
 int wmain(int argc, wchar_t** argv) {
     // headless-режим GUI-приложения: подключаемся к консоли родителя.
-    if (argc >= 2 && wcscmp(argv[1], L"--play") == 0) {
+    if (argc >= 2 && (wcscmp(argv[1], L"--play") == 0 ||
+                      wcscmp(argv[1], L"--top") == 0)) {
         AttachConsole(ATTACH_PARENT_PROCESS);
         freopen("CONOUT$", "w", stdout);
         freopen("CONOUT$", "w", stderr);
     }
 
     EngineManager em;
+    LibraryManager lm;
 
     std::wstring engines_dir;
     wchar_t env_buf[MAX_PATH];
@@ -33,9 +36,48 @@ int wmain(int argc, wchar_t** argv) {
     else
         engines_dir = exe_dir() + L"\\Engines";
 
-    const size_t loaded = em.load_directory(engines_dir);
+    std::wstring libs_dir;
+    if (GetEnvironmentVariableW(L"CHIPDECK_LIBS", env_buf, MAX_PATH))
+        libs_dir = env_buf;
+    else
+        libs_dir = exe_dir() + L"\\Libraries";
 
-    // ---- headless-режим ----
+    const size_t loaded = em.load_directory(engines_dir);
+    const size_t libs = lm.load_directory(libs_dir);
+
+    // ---- headless: топ онлайн-библиотеки ----
+    if (argc >= 2 && wcscmp(argv[1], L"--top") == 0) {
+        std::printf("engines: %zu, libraries: %zu\n", loaded, libs);
+        if (libs == 0) return 2;
+        lm.connect_all();
+        LibModule& m = lm.mutable_at(0);
+        if (!m.session) {
+            std::printf("connect FAILED\n");
+            return 3;
+        }
+        ChipLibRequest req{};
+        req.struct_size = sizeof(req);
+        req.query_type = CHP_QUERY_TOP;
+        req.limit = 10;
+        volatile int cancel = 0;
+        ChipError qerr{};
+        uint32_t n = 0;
+        m.query_fn(m.session, &req,
+                   [](void* user, const ChipLibEntry* e) -> uint32_t {
+                       uint32_t* cnt = static_cast<uint32_t*>(user);
+                       std::printf("%u. [%s] %s - %s (rating %u%s)\n",
+                                   ++(*cnt), e->format, e->title, e->author,
+                                   e->rating,
+                                   (e->flags & CHP_ENTRY_HAS_DURATION)
+                                       ? "" : ", dur n/a");
+                       return 0;
+                   },
+                   &n, &cancel, &qerr);
+        lm.disconnect_all();
+        return n > 0 ? 0 : 4;
+    }
+
+    // ---- headless: воспроизведение ----
     if (argc >= 3 && wcscmp(argv[1], L"--play") == 0) {
         std::printf("engines loaded: %zu\n", loaded);
         if (loaded == 0) return 2;
@@ -74,5 +116,5 @@ int wmain(int argc, wchar_t** argv) {
 
     Player player;
     const bool minimized = argc >= 2 && wcscmp(argv[1], L"--tray") == 0;
-    return run_ui(em, player, minimized);
+    return run_ui(em, lm, player, minimized);
 }

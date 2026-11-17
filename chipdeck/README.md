@@ -15,8 +15,15 @@
     (полный список в extensions движка), sub-songs, честная длительность,
     Seek.
   - [engine_stub](plugins/engine_stub) — заглушка для проверки ABI.
-- **ChipLibrary** — провайдеры онлайн-библиотек с рейтингами
-  (ModArchive, BotB). В v1 — только дизайн.
+- **ChipLibrary** (`plugins/`) — провайдеры онлайн-библиотек.
+  - [lib_botb](plugins/lib_botb) — **рабочий плагин** Battle of the Bits
+    (API v1, публичный): Top rated / Search / Random, рейтинг 0–1000,
+    скачивание оригиналов. Скачивание на BotB требует логин —
+    email/password задаются в `Libraries/botb.ini` (см. схему настроек
+    плагина); без них загрузка вернёт CHP_ERR_AUTH.
+  - Host: окно «Library» (меню лотка → Library): Top rated/Search/Random,
+    двойной клик по записи — скачивание в кеш (`cache/<id>/`) и
+    воспроизведение, если для формата есть движок.
 
 - ABI: [include/chipdeck_api.h](include/chipdeck_api.h) (v1)
 - Дизайн: [docs/DESIGN.ru.md](docs/DESIGN.ru.md) (English: [DESIGN.md](docs/DESIGN.md))
@@ -47,6 +54,14 @@ cd ../engine_openmpt
 bash build-deps.sh   # статическая libopenmpt 0.8.10 → deps/inst
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release && cmake --build build
 ./build/ompt_test.exe build/Engines/engine_openmpt.dll <файл.mod|s3m|xm|it> out.wav
+
+# Библиотека BotB (нужен интернет)
+cd ../lib_botb
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release && cmake --build build
+./build/botb_test.exe build/Libraries/lib_botb.dll
+
+# Проверка интеграции библиотек в host
+CHIPDECK_LIBS=../plugins/lib_botb/build/Libraries ../../host/build/chipdeck_host.exe --top
 ```
 
 Тест GME проверяет: Probe, Open (включая отказ на мусоре), подтюны,
