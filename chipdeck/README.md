@@ -36,7 +36,7 @@ cd chipdeck/plugins/engine_stub
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release && cmake --build build
 ./build/stub_test build/Engines/engine_stub.dll
 
-# Рабочий движок GME (AY + POKEY)
+# Рабочий движок GME (AY + POKEY + NSF)
 cd ../engine_gme
 bash build-deps.sh   # статическая libgme 0.6.5 → deps/inst
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release && cmake --build build
@@ -63,6 +63,17 @@ cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release && cmake --build build
 # Проверка интеграции библиотек в host
 CHIPDECK_LIBS=../plugins/lib_botb/build/Libraries ../../host/build/chipdeck_host.exe --top
 ```
+
+## Дистрибутив
+
+```bash
+cd chipdeck
+bash make-dist.sh     # → dist/ChipDeck/ (exe + Engines + Libraries + README)
+```
+
+Готовая папка ~20 МБ, архив `dist/ChipDeck-win64.zip` ~5.7 МБ.
+Скопировать на любую Windows x64 машину и запустить `chipdeck_host.exe`
+— всё остальное (Engines, Libraries, кеш) подхватывается автоматически.
 
 Тест GME проверяет: Probe, Open (включая отказ на мусоре), подтюны,
 метаданные, Select, рендер 5 секунд с проверкой не-тишины, Seek, WAV-дамп,
