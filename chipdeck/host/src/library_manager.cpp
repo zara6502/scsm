@@ -112,11 +112,14 @@ size_t LibraryManager::load_directory(const std::wstring& dir) {
                 }
                 m.cfg.struct_size = sizeof(m.cfg);
                 m.cfg.param_count = uint32_t(m.params.size());
-                m.cfg.params = m.params.data();
             }
         }
 
         libs_.push_back(m);
+        // ВАЖНО: cfg.params указывал на локальный m.params — после
+        // копирования в вектор перенаправляем на хранимую копию.
+        LibModule& stored = libs_.back();
+        stored.cfg.params = stored.params.data();
     }
     return libs_.size();
 }

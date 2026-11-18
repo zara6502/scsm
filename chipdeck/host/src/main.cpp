@@ -68,17 +68,45 @@ int wmain(int argc, wchar_t** argv) {
         volatile int cancel = 0;
         ChipError qerr{};
         uint32_t n = 0;
+        ChipLibEntry first{};
+        auto ctx = std::make_pair(&n, &first);
         m.query_fn(m.session, &req,
                    [](void* user, const ChipLibEntry* e) -> uint32_t {
-                       uint32_t* cnt = static_cast<uint32_t*>(user);
+                       // user = {счётчик, первая запись}
+                       auto* ctx =
+                           static_cast<std::pair<uint32_t*, ChipLibEntry*>*>(
+                               user);
                        std::printf("%u. [%s] %s - %s (rating %u%s)\n",
-                                   ++(*cnt), e->format, e->title, e->author,
-                                   e->rating,
+                                   ++(*ctx->first), e->format, e->title,
+                                   e->author, e->rating,
                                    (e->flags & CHP_ENTRY_HAS_DURATION)
                                        ? "" : ", dur n/a");
+                       if (!ctx->second->entry_id[0]) *ctx->second = *e;
                        return 0;
                    },
-                   &n, &cancel, &qerr);
+                   &ctx, &cancel, &qerr);
+        // пробное скачивание первой записи (проверка логина/Fetch)
+        FILE* log = std::fopen("top_log.txt", "w");
+        if (log)
+            std::fprintf(log, "first_id=%s dl=%s\n", first.entry_id,
+                         first.download_hint);
+        if (first.entry_id[0]) {
+            uint8_t* data = nullptr;
+            size_t size = 0;
+            ChipError ferr{};
+            if (m.fetch_fn(m.session, &first, nullptr, nullptr, &cancel,
+                           &data, &size, &ferr)) {
+                if (log)
+                    std::fprintf(log,
+                                 "fetch OK: %zu bytes (%02X %02X %02X %02X)\n",
+                                 size, data[0], data[1], data[2], data[3]);
+                m.free_buffer(m.session, data);
+            } else {
+                if (log)
+                    std::fprintf(log, "fetch FAILED: %s\n", ferr.message);
+            }
+        }
+        if (log) std::fclose(log);
         lm.disconnect_all();
         return n > 0 ? 0 : 4;
     }
