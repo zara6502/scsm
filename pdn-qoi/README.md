@@ -19,10 +19,16 @@ fallback-папки (важно, если Visual Studio Shared NuGetPackages л�
 
 ## Установка
 
-Скопировать `Plugin/bin/Release/PdnQoi.dll` в:
-- `C:\Program Files\Paint.NET\FileTypes\` (нужны права администратора)
+Скопировать `Plugin/bin/Release/PdnQoi.dll` (без зависимостей, один файл)
+в ОДНО из мест и полностью перезапустить Paint.NET:
+- `C:\Program Files\Paint.NET\FileTypes\` (нужны права администратора) —
+  для классической установки;
+- `Documents\paint.net App Files\FileTypes\` — путь для пользовательских
+  плагинов (также работает для классической установки в 5.x).
 
-и перезапустить Paint.NET — в диалогах Open/Save появится формат "QOI".
+Важно: скопированная в bin сборка зависит только от самой себя; если DLL
+не появляется в диалогах — полностью закройте Paint.NET (процесс) и
+запустите заново, PDN не перечитывает FileTypes на лету.
 
 ## Тесты
 
