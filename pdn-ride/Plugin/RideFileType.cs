@@ -184,6 +184,18 @@ public sealed class RideFileType : PropertyBasedFileType
         uint r = RideNative.RideCodecEncode(bgra, (uint)w, (uint)h,
             ref encOpts, out IntPtr dataPtr, out IntPtr dataSize,
             ref encErr);
+
+        // INDEXED невозможен для >256 цветов (квантования в rideent нет) —
+        // автоматически сохраняем как RGB, как сделал бы Auto.
+        if (r != 0 && profile == RideProfile.Indexed &&
+            encErr.Message != null &&
+            encErr.Message.Contains("256 colours"))
+        {
+            encOpts.ProfileChoice = (int)RideProfileChoice.Rgb;
+            r = RideNative.RideCodecEncode(bgra, (uint)w, (uint)h,
+                ref encOpts, out dataPtr, out dataSize, ref encErr);
+        }
+
         if (r != 0)
             throw new IOException(
                 $"RIDE encode failed: {encErr.Message ?? ""}");
