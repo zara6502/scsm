@@ -193,12 +193,13 @@ public sealed class RideFileType : PropertyBasedFileType
         bool bwPalette = (bool)token.GetProperty(BwPaletteProperty).Value;
 
         var opts = RideEncodeOptions.Default;
+        // Auto = всегда RGB (без индексирования), как требовал заказчик;
+        // индексирование — только явный Profile=Indexed
         opts.ProfileChoice = profile switch
         {
-            RideProfile.Rgb => (int)RideProfileChoice.Rgb,
             RideProfile.Indexed => (int)RideProfileChoice.Indexed,
             RideProfile.Qoi => (int)RideProfileChoice.Qoi,
-            _ => (int)RideProfileChoice.Auto,
+            _ => (int)RideProfileChoice.Rgb, // Auto и RGB
         };
         opts.Entropy = (int)entropy;
         opts.Linear = linear ? 1 : 0;
