@@ -8,6 +8,7 @@
 #include <string>
 #include <vector>
 
+#include "quantizer.hpp"
 #include "ride/ride.hpp"
 
 namespace {
@@ -62,6 +63,16 @@ ride::EncodeOptions to_ride_options(const RideEncodeOptions* o) {
     return opt;
 }
 
+// Есть ли уникальных цветов больше quantize_colors (нужно квантование).
+bool quantization_needed(const uint8_t* bgra, uint32_t w, uint32_t h,
+                         const RideEncodeOptions* o) {
+    if (!o || o->struct_size < sizeof(RideEncodeOptions)) return false;
+    if (o->quantize_colors == 0 || o->quantize_colors > 256) return false;
+    // QOI-профиль не квантуется
+    if (o->profile_choice == RIDE_PROFILE_QOI) return false;
+    return rideq::count_unique_colors(bgra, w, h) > o->quantize_colors;
+}
+
 } // namespace
 
 extern "C" {
@@ -102,8 +113,29 @@ RIDE_CODEC_EXPORT uint32_t RIDE_CODEC_CALL RideCodecEncode(
     const ride::EncodeOptions ropt = to_ride_options(opts);
     ride::EncodeStats stats;
     std::string ride_err;
-    std::vector<uint8_t> encoded =
-        ride::encode(img, ropt, &stats, &ride_err);
+    std::vector<uint8_t> encoded;
+
+    const bool need_quantize =
+        quantization_needed(bgra, w, h, opts);
+    if (need_quantize) {
+        // квантованный INDEXED-кандидат (палитра <= quantize_colors)
+        ride::IndexedImage idx;
+        const bool dither =
+            opts && opts->struct_size >= sizeof(RideEncodeOptions) &&
+            opts->dither != 0;
+        if (!rideq::quantize_indexed(bgra, w, h, opts->quantize_colors,
+                                     dither, idx)) {
+            set_error(err, kErrOutOfMemory, "quantization failed");
+            return kErrOutOfMemory;
+        }
+        encoded = ride::encode_indexed(idx, ropt, &stats, &ride_err);
+    } else if (ropt.profile == ride::ProfileChoice::Indexed) {
+        // форсированный INDEXED без квантования: ошибка >256 цветов —
+        // легаси-поведение (см. документацию контракта)
+        encoded = ride::encode(img, ropt, &stats, &ride_err);
+    } else {
+        encoded = ride::encode(img, ropt, &stats, &ride_err);
+    }
     if (encoded.empty()) {
         set_error(err, kErrInternal,
                   ride_err.empty() ? "encode failed" : ride_err.c_str());

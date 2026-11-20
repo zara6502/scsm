@@ -30,9 +30,26 @@ Paint.NET ── PdnRide.dll (обвязка: IFileTypeFactory, PropertyBasedFil
 | Опция | Значения |
 |---|---|
 | Profile | Auto (по умолчанию) / RGB / Indexed / QOI |
+| Indexed colors | 1–256 (ввод числа с валидацией, по умолчанию 256) |
+| Floyd-Steinberg dithering | Off (по умолчанию) / On |
 | rANS entropy layer | Off / Auto (≥2% выигрыш) / On |
 | Block size | Default (262144 px) / Small / Large / Single block |
 | Linear colors | флаг kFlagLinear в заголовке |
+
+### Квантование и дизеринг
+
+Профиль INDEXED для фото (>256 цветов) требует **квантования палитры**:
+- алгоритм: **Median Cut в Oklab** (перцептивное пространство) +
+  **3 итерации k-means с ΔE в Oklab** — «квантование через дельту E»;
+- опция **Indexed colors** (1–256): квантование выполняется, когда
+  уникальных цветов больше заданного N; иначе палитра точная;
+- **Floyd–Steinberg** (по умолчанию off): дизеринг при фактическом
+  квантовании; шум дизеринга увеличивает размер файла;
+- квантование реализовано в RideCodec.dll (контракт v2: поля
+  `quantize_colors`/`dither` в конце RideEncodeOptions, старые хосты
+  совместимы через struct_size); rideent не изменяется. При появлении
+  RGBA-профиля квантизатор расширяется по той же схеме (Oklab уже
+  выбран как пространство ΔE).
 
 ## Сборка RideCodec.dll (MSYS2 UCRT64)
 

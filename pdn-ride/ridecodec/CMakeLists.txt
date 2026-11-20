@@ -29,6 +29,7 @@ endif()
 
 add_library(RideCodec SHARED
   src/ride_codec.cpp
+  src/quantizer.cpp
   "${RIDEENT_ROOT}/src/format.cpp"
   "${RIDEENT_ROOT}/src/rgb_codec.cpp"
   "${RIDEENT_ROOT}/src/indexed_codec.cpp"

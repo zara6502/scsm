@@ -41,6 +41,8 @@ public sealed class RideFileType : PropertyBasedFileType
     private const string EntropyProperty = "RIDE.Entropy";
     private const string BlockSizeProperty = "RIDE.BlockSize";
     private const string LinearProperty = "RIDE.Linear";
+    private const string QuantizeColorsProperty = "RIDE.QuantizeColors";
+    private const string DitherProperty = "RIDE.Dither";
 
     public RideFileType()
         : base(
@@ -68,6 +70,8 @@ public sealed class RideFileType : PropertyBasedFileType
             StaticListChoiceProperty.CreateForEnum(BlockSizeProperty,
                 RideBlockSize.Default),
             new BooleanProperty(LinearProperty, false),
+            new Int32Property(QuantizeColorsProperty, 256, 1, 256),
+            new BooleanProperty(DitherProperty, false),
         };
         return new PropertyCollection(props);
     }
@@ -116,6 +120,22 @@ public sealed class RideFileType : PropertyBasedFileType
         linear.ControlProperties[ControlInfoPropertyNames.Description]
             .Value = "Store the linear-color flag (no conversion)";
 
+        PropertyControlInfo quantize =
+            info.FindControlForPropertyName(QuantizeColorsProperty);
+        quantize.ControlProperties[ControlInfoPropertyNames.DisplayName]
+            .Value = "Indexed colors (1-256)";
+        quantize.ControlProperties[ControlInfoPropertyNames.Description]
+            .Value = "Quantize to at most this many colors when the image " +
+                     "has more (Median Cut + k-means, delta E in Oklab)";
+
+        PropertyControlInfo dither =
+            info.FindControlForPropertyName(DitherProperty);
+        dither.ControlProperties[ControlInfoPropertyNames.DisplayName]
+            .Value = "Floyd-Steinberg dithering";
+        dither.ControlProperties[ControlInfoPropertyNames.Description]
+            .Value = "Applies when colors are actually quantized; " +
+                     "increases file size";
+
         return info;
     }
 
@@ -141,6 +161,9 @@ public sealed class RideFileType : PropertyBasedFileType
         var blockSize = (RideBlockSize)token
             .GetProperty(BlockSizeProperty).Value;
         bool linear = (bool)token.GetProperty(LinearProperty).Value;
+        int quantizeColors = (int)token
+            .GetProperty(QuantizeColorsProperty).Value;
+        bool dither = (bool)token.GetProperty(DitherProperty).Value;
 
         var opts = RideEncodeOptions.Default;
         opts.ProfileChoice = profile switch
@@ -152,6 +175,13 @@ public sealed class RideFileType : PropertyBasedFileType
         };
         opts.Entropy = (int)entropy;
         opts.Linear = linear ? 1 : 0;
+        // квантование: для INDEXED — обязательно по числу цветов,
+        // для Auto — участвует в конкурсе «кто меньше»,
+        // для QOI — не применяется (rideent: 0 = off)
+        opts.QuantizeColors = profile == RideProfile.Qoi
+            ? 0u
+            : (uint)quantizeColors;
+        opts.Dither = dither ? 1 : 0;
         opts.BlockPixels = blockSize switch
         {
             RideBlockSize.Small => 65536,

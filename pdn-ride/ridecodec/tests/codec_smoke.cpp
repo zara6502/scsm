@@ -54,8 +54,31 @@ static void run_case(const char* name, std::vector<uint8_t>& bgra,
         return;
     }
 
-    bool same = memcmp(bgra.data(), out, (size_t)w * h * 4) == 0;
-    check(same, (std::string(name) + ": roundtrip BGRA").c_str());
+    if (opts && opts->struct_size >= sizeof(RideEncodeOptions) &&
+        opts->quantize_colors > 0) {
+        // квантованный INDEXED: декод == палитра[индексы]; проверяем,
+        // что уникальных цветов декода не больше quantize_colors
+        std::vector<uint8_t> seen;
+        uint32_t distinct = 0;
+        for (size_t i = 0; i < (size_t)w * h * 4; i += 4) {
+            bool found = false;
+            for (size_t k = 0; k < seen.size(); k += 3)
+                if (seen[k] == out[i] && seen[k + 1] == out[i + 1] &&
+                    seen[k + 2] == out[i + 2])
+                { found = true; break; }
+            if (!found) {
+                seen.push_back(out[i]);
+                seen.push_back(out[i + 1]);
+                seen.push_back(out[i + 2]);
+                ++distinct;
+            }
+        }
+        check(distinct <= opts->quantize_colors,
+              (std::string(name) + ": <= palette colors").c_str());
+    } else {
+        bool same = memcmp(bgra.data(), out, (size_t)w * h * 4) == 0;
+        check(same, (std::string(name) + ": roundtrip BGRA").c_str());
+    }
 
     RideCodecFree(out);
     RideCodecFree(ride_data);
@@ -116,6 +139,22 @@ int main() {
                 b[o] = c[2]; b[o + 1] = c[1]; b[o + 2] = c[0]; b[o + 3] = 255;
             }
         run_case("4-color INDEXED", b, 80, 80, nullptr);
+
+        // квантование: фото-подобный шум (>256 цветов) -> Indexed, N=32
+        std::vector<uint8_t> n2(200 * 150 * 4, 0);
+        for (size_t i = 0; i < n2.size(); i += 4) {
+            n2[i] = rnd(); n2[i + 1] = rnd(); n2[i + 2] = rnd();
+            n2[i + 3] = 255;
+        }
+        RideEncodeOptions qo{};
+        qo.struct_size = sizeof(qo);           // v2: с quantize_colors
+        qo.profile_choice = RIDE_PROFILE_INDEXED;
+        qo.quantize_colors = 32;
+        run_case("quantize 32 colors", n2, 200, 150, &qo);
+        // то же с Floyd–Steinberg
+        RideEncodeOptions qd = qo;
+        qd.dither = 1;
+        run_case("quantize 32 + FS", n2, 200, 150, &qd);
     }
     // 1x1
     {

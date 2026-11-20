@@ -78,6 +78,15 @@ typedef struct RideEncodeOptions {
     uint32_t block_rows;       // 0 = определять по block_pixels
     int32_t try_both_parses;   // 1 = пробовать оба COPY-парса (лучшее сжатие)
     uint32_t threads;          // 0 = hardware concurrency
+    // v2 (квантование для профиля INDEXED; v1-хосты, передавшие короткий
+    // struct_size, получают поведение без квантования):
+    uint32_t quantize_colors;  // 0 = не квантовать; 1..256 — построить
+                               //   палитру до N цветов, когда уникальных
+                               //   цветов больше N (Median Cut в Oklab +
+                               //   k-means ΔE); при AUTO участвует в
+                               //   конкурсе «кто меньше»
+    int32_t dither;            // 0 = нет; 1 = Floyd–Steinberg (только при
+                               //   фактическом квантовании)
 } RideEncodeOptions;
 
 typedef struct RideDecodeOptions {
