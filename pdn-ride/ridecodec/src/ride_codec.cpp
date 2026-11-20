@@ -68,8 +68,10 @@ bool quantization_needed(const uint8_t* bgra, uint32_t w, uint32_t h,
                          const RideEncodeOptions* o) {
     if (!o || o->struct_size < sizeof(RideEncodeOptions)) return false;
     if (o->quantize_colors == 0 || o->quantize_colors > 256) return false;
-    // QOI-профиль не квантуется
+    // квантование применяется только к INDEXED и AUTO (участие в конкурсе
+    // «кто меньше»); RGB и QOI никогда не квантуются
     if (o->profile_choice == RIDE_PROFILE_QOI) return false;
+    if (o->profile_choice == RIDE_PROFILE_RGB) return false;
     return rideq::count_unique_colors(bgra, w, h) > o->quantize_colors;
 }
 

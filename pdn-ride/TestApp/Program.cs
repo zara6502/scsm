@@ -2,7 +2,11 @@
 // RideCodec.dll должен быть рядом (копируется при сборке) — см. csproj target.
 using System;
 using System.IO;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Runtime.Loader;
+using PaintDotNet;
+using PdnRide;
 
 internal static class Program
 {
@@ -131,8 +135,25 @@ internal static class Program
         Check(same, name + ": roundtrip BGRA");
     }
 
+    [ModuleInitializer]
+    internal static void Init()
+    {
+        // резолвер до JIT-а любых методов, трогающих PDN-типы
+        AssemblyLoadContext.Default.Resolving += (ctx, name) =>
+        {
+            string pdn = @"C:\Program Files\paint.net";
+            string p = Path.Combine(pdn, name.Name + ".dll");
+            return File.Exists(p) ? ctx.LoadFromAssemblyPath(p) : null;
+        };
+    }
+
     private static void Main(string[] args)
     {
+        if (args.Length > 0 && args[0] == "--dialog")
+        {
+            DialogTest();
+            return;
+        }
         Check(RideCodecVersion() != 0, "RideCodecVersion");
         Console.WriteLine($"codec version: {RideCodecVersion() >> 16}." +
             $"{RideCodecVersion() & 0xFFFF}");
@@ -301,5 +322,72 @@ internal static class Program
 
         Console.WriteLine(failures == 0 ? "ВСЁ ПРОШЛО" : $"ОШИБОК: {failures}");
         Environment.Exit(failures);
+    }
+
+    // Эмуляция диалога PDN: дефолтный токен -> значения UI -> Save.
+    private static void DialogTest()
+    {
+        var ft = new PdnRide.RideFileType();
+        var token = (PropertyBasedSaveConfigToken)
+            ft.CreateDefaultSaveConfigToken();
+
+        Func<int, int, Document> makeDoc = (w, h) =>
+        {
+            var doc = new Document(w, h);
+            var layer = Layer.CreateBackgroundLayer(w, h);
+            var surf = layer.Surface;
+            uint rng = 12345;
+            unsafe
+            {
+                for (int y = 0; y < h; ++y)
+                {
+                    ColorBgra* row = surf.GetRowPointerUnchecked(y);
+                    for (int x = 0; x < w; ++x)
+                    {
+                        rng = rng * 1103515245 + 12345;
+                        byte r = (byte)(rng >> 16);
+                        rng = rng * 1103515245 + 12345;
+                        byte g = (byte)(rng >> 16);
+                        rng = rng * 1103515245 + 12345;
+                        byte b = (byte)(rng >> 16);
+                        row[x] = ColorBgra.FromBgra(b, g, r, 255);
+                    }
+                }
+            }
+            doc.Layers.Add(layer);
+            return doc;
+        };
+
+        long SaveWith(Document doc, PropertyBasedSaveConfigToken tok)
+        {
+            using var ms = new MemoryStream();
+            ft.Save(doc, ms, tok);
+            return ms.Length;
+        }
+
+        using (var doc = makeDoc(96, 96))
+            Console.WriteLine("default (Auto/256): " +
+                SaveWith(doc, token) + " bytes");
+
+        token.SetPropertyValue("RIDE.Profile", RideProfile.Indexed);
+        token.SetPropertyValue("RIDE.QuantizeColors", 1);
+        token.SetPropertyValue("RIDE.Dither", true);
+        Console.WriteLine("state: Profile=" +
+            token.GetProperty("RIDE.Profile").Value + " QC=" +
+            token.GetProperty("RIDE.QuantizeColors").Value + " Dither=" +
+            token.GetProperty("RIDE.Dither").Value);
+        using (var doc = makeDoc(96, 96))
+            Console.WriteLine("modified (Indexed/1/FS): " +
+                SaveWith(doc, token) + " bytes");
+
+        token.SetPropertyValue("RIDE.Profile", RideProfile.Rgb);
+        Console.WriteLine("state: Profile=" +
+            token.GetProperty("RIDE.Profile").Value + " QC=" +
+            token.GetProperty("RIDE.QuantizeColors").Value);
+        using (var doc = makeDoc(96, 96))
+        {
+            long sz = SaveWith(doc, token);
+            Console.WriteLine("modified (RGB): " + sz + " bytes");
+        }
     }
 }

@@ -178,9 +178,10 @@ public sealed class RideFileType : PropertyBasedFileType
         // квантование: для INDEXED — обязательно по числу цветов,
         // для Auto — участвует в конкурсе «кто меньше»,
         // для QOI — не применяется (rideent: 0 = off)
-        opts.QuantizeColors = profile == RideProfile.Qoi
-            ? 0u
-            : (uint)quantizeColors;
+        opts.QuantizeColors =
+            profile == RideProfile.Indexed || profile == RideProfile.Auto
+                ? (uint)quantizeColors
+                : 0u; // RGB и QOI не квантуется
         opts.Dither = dither ? 1 : 0;
         opts.BlockPixels = blockSize switch
         {
