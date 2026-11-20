@@ -1,6 +1,7 @@
 // P/Invoke-обвязка RideCodec.dll. Контракт — ridecodec/include/ride_codec/
 // ride_codec.h (см. также ../ridecodec/CONTRACT.md).
 using System;
+using System.IO;
 using System.Runtime.InteropServices;
 
 namespace PdnRide;
@@ -85,6 +86,27 @@ internal struct RideError
 internal static class RideNative
 {
     private const string Dll = "RideCodec.dll";
+
+    // DllImport ищет нативные DLL рядом с PaintDotNet.exe, но не в папке
+    // плагинов. Явно грузим RideCodec.dll из каталога этой сборки (или из
+    // корня установки — работает и так, и так).
+    static RideNative()
+    {
+        try
+        {
+            string pluginDir = Path.GetDirectoryName(
+                typeof(RideNative).Assembly.Location) ?? ".";
+            if (NativeLibrary.TryLoad(
+                    Path.Combine(pluginDir, "RideCodec.dll"), out _))
+                return;
+            NativeLibrary.TryLoad(
+                Path.Combine(AppContext.BaseDirectory, "RideCodec.dll"), out _);
+        }
+        catch
+        {
+            // упадём в стандартный DllImport-поиск
+        }
+    }
 
     [DllImport(Dll, CallingConvention = CallingConvention.Cdecl)]
     public static extern uint RideCodecVersion();

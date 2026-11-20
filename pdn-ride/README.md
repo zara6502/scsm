@@ -60,9 +60,10 @@ dotnet build TestApp.csproj -c Release  # → bin/Release/TestApp.exe + RideCode
 1. `Plugin/bin/Release/PdnRide.dll` → в одно из мест:
    - `C:\Program Files\paint.net\FileTypes\` (права администратора)
    - `Documents\paint.net App Files\FileTypes\`
-2. `ridecodec/build/RideCodec.dll` → **в ту же папку `paint.net App Files\FileTypes\`**
-   (рядом с PdnRide.dll; для варианта в Program Files — рядом с
-   `PaintDotNet.exe`, т.е. в корень установки)
+2. `ridecodec/build/RideCodec.dll` → **в ту же папку рядом с PdnRide.dll**
+   (`paint.net App Files\FileTypes\` или корень установки рядом с
+   `PaintDotNet.exe` — PdnRide грузит кодек из своего каталога явно,
+   а при отсутствии ищет в корне Paint.NET)
 3. Полностью перезапустить Paint.NET.
 
 В диалогах Open/Save появится формат **RIDE (*.ride)**; Save As показывает
