@@ -17,6 +17,7 @@
     <Compile Include="NativeApi.cs" />
     <Compile Include="PluginSupportInfo.cs" />
     <Compile Include="RideFileType.cs" />
+    <Compile Include="RideFileTypeFactory.cs" />
   </ItemGroup>
 
   <ItemGroup>

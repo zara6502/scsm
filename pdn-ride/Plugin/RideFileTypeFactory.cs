@@ -7,7 +7,7 @@ namespace PdnRide;
 internal sealed class RideFileTypeFactory
     : IFileTypeFactory
 {
-    public FileType[] GetFileTypeInstances(IFileTypeHost host)
+    public FileType[] GetFileTypeInstances()
     {
         return [new RideFileType()];
     }
