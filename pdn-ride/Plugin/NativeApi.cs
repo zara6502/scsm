@@ -40,8 +40,9 @@ internal struct RideEncodeOptions
     public uint Threads;
     // v2: квантование для профиля INDEXED (v1-хосты передают короткий
     // struct_size — контракт обратно совместим)
-    public uint QuantizeColors; // 0 = не квантовать; 1..256
+    public uint QuantizeColors; // 0 = не квантовать; 2..256
     public int Dither;          // 0 = нет; 1 = Floyd–Steinberg
+    public int BwPalette;       // 1 = при 2 цветах жёсткие чёрный/белый
 
     public static RideEncodeOptions Default => new()
     {

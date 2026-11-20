@@ -122,11 +122,12 @@ RIDE_CODEC_EXPORT uint32_t RIDE_CODEC_CALL RideCodecEncode(
     if (need_quantize) {
         // квантованный INDEXED-кандидат (палитра <= quantize_colors)
         ride::IndexedImage idx;
-        const bool dither =
-            opts && opts->struct_size >= sizeof(RideEncodeOptions) &&
-            opts->dither != 0;
+        const bool has_v3 = opts &&
+            opts->struct_size >= sizeof(RideEncodeOptions);
+        const bool dither = has_v3 && opts->dither != 0;
+        const bool bw = has_v3 && opts->bw_palette != 0;
         if (!rideq::quantize_indexed(bgra, w, h, opts->quantize_colors,
-                                     dither, idx)) {
+                                     dither, bw, idx)) {
             set_error(err, kErrOutOfMemory, "quantization failed");
             return kErrOutOfMemory;
         }

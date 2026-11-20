@@ -43,6 +43,7 @@ public sealed class RideFileType : PropertyBasedFileType
     private const string LinearProperty = "RIDE.Linear";
     private const string QuantizeColorsProperty = "RIDE.QuantizeColors";
     private const string DitherProperty = "RIDE.Dither";
+    private const string BwPaletteProperty = "RIDE.BwPalette";
 
     public RideFileType()
         : base(
@@ -59,6 +60,22 @@ public sealed class RideFileType : PropertyBasedFileType
 
     // ---------- окно настроек сохранения ----------
 
+    // значения 2..256: степени двойки в начале, затем убывающие
+    private static int[] QuantizeColorChoices()
+    {
+        var values = new List<int> { 256, 128, 64, 32, 16, 8, 4, 2 };
+        for (int v = 255; v >= 3; --v) values.Add(v);
+        return values.ToArray();
+    }
+
+    private static StaticListChoiceProperty CreateQuantizeColorsProperty()
+    {
+        int[] values = QuantizeColorChoices();
+        return new StaticListChoiceProperty(QuantizeColorsProperty,
+            Array.ConvertAll(values, v => (object)v), 0);
+    }
+
+
     public override PropertyCollection OnCreateSavePropertyCollection()
     {
         var props = new List<Property>
@@ -70,8 +87,9 @@ public sealed class RideFileType : PropertyBasedFileType
             StaticListChoiceProperty.CreateForEnum(BlockSizeProperty,
                 RideBlockSize.Default),
             new BooleanProperty(LinearProperty, false),
-            new Int32Property(QuantizeColorsProperty, 256, 1, 256),
+            CreateQuantizeColorsProperty(),
             new BooleanProperty(DitherProperty, false),
+            new BooleanProperty(BwPaletteProperty, false),
         };
         return new PropertyCollection(props);
     }
@@ -123,7 +141,7 @@ public sealed class RideFileType : PropertyBasedFileType
         PropertyControlInfo quantize =
             info.FindControlForPropertyName(QuantizeColorsProperty);
         quantize.ControlProperties[ControlInfoPropertyNames.DisplayName]
-            .Value = "Indexed colors (1-256)";
+            .Value = "Indexed colors";
         quantize.ControlProperties[ControlInfoPropertyNames.Description]
             .Value = "Quantize to at most this many colors when the image " +
                      "has more (Median Cut + k-means, delta E in Oklab)";
@@ -135,6 +153,14 @@ public sealed class RideFileType : PropertyBasedFileType
         dither.ControlProperties[ControlInfoPropertyNames.Description]
             .Value = "Applies when colors are actually quantized; " +
                      "increases file size";
+
+        PropertyControlInfo bw =
+            info.FindControlForPropertyName(BwPaletteProperty);
+        bw.ControlProperties[ControlInfoPropertyNames.DisplayName]
+            .Value = "Black & white palette (2 colors)";
+        bw.ControlProperties[ControlInfoPropertyNames.Description]
+            .Value = "Strict black/white palette instead of colors from " +
+                     "the image (applies when Indexed colors = 2)";
 
         return info;
     }
@@ -164,6 +190,7 @@ public sealed class RideFileType : PropertyBasedFileType
         int quantizeColors = (int)token
             .GetProperty(QuantizeColorsProperty).Value;
         bool dither = (bool)token.GetProperty(DitherProperty).Value;
+        bool bwPalette = (bool)token.GetProperty(BwPaletteProperty).Value;
 
         var opts = RideEncodeOptions.Default;
         opts.ProfileChoice = profile switch

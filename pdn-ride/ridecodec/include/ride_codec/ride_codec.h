@@ -87,6 +87,10 @@ typedef struct RideEncodeOptions {
                                //   конкурсе «кто меньше»
     int32_t dither;            // 0 = нет; 1 = Floyd–Steinberg (только при
                                //   фактическом квантовании)
+    // v3 (для чёрно-белого дизеринга):
+    int32_t bw_palette;        // 1 = при quantize_colors == 2 использовать
+                               //   жёсткую палитру чёрный/белый вместо
+                               //   кластеров изображения; 0 = из изображения
 } RideEncodeOptions;
 
 typedef struct RideDecodeOptions {

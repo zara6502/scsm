@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <functional>
 #include <queue>
 #include <unordered_map>
 
@@ -145,7 +146,7 @@ size_t count_unique_colors(const uint8_t* bgra, uint32_t w, uint32_t h) {
 }
 
 bool quantize_indexed(const uint8_t* bgra, uint32_t w, uint32_t h,
-                      uint32_t max_colors, bool dither,
+                      uint32_t max_colors, bool dither, bool bw_palette,
                       ride::IndexedImage& out) {
     out = ride::IndexedImage{};
     out.width = w;
@@ -171,6 +172,7 @@ bool quantize_indexed(const uint8_t* bgra, uint32_t w, uint32_t h,
             out.palette.push_back(unique[order[i]].rgb[2]);
         }
     } else {
+        const bool force_bw = bw_palette && max_colors == 2;
         // --- median cut ---
         // сортируем по L для стартового разбиения
         std::sort(order.begin(), order.end(), [&](size_t a, size_t b) {
@@ -178,12 +180,28 @@ bool quantize_indexed(const uint8_t* bgra, uint32_t w, uint32_t h,
         });
         Box root{0, unique_count};
         prepare_box(unique, order, root);
-        auto cmp = [&](const Box& a, const Box& b) {
-            return a.split_range * (double)a.weight <
-                   b.split_range * (double)b.weight;
-        };
-        std::priority_queue<Box, std::vector<Box>, decltype(cmp)> boxes(cmp);
-        boxes.push(root);
+        std::priority_queue<Box, std::vector<Box>, std::function<bool(const Box&, const Box&)>> boxes(
+            [&](const Box& a, const Box& b) {
+                return a.split_range * (double)a.weight <
+                       b.split_range * (double)b.weight;
+            });
+        if (!force_bw) {
+            boxes.push(root);
+        } else {
+            // жёсткая ч/б палитра: два бокса по яркости
+            std::sort(order.begin(), order.end(), [&](size_t a, size_t b) {
+                return unique[a].lab.L < unique[b].lab.L;
+            });
+            size_t mid = 0;
+            uint64_t total = 0, acc = 0;
+            for (size_t i = 0; i < unique_count; ++i) total += unique[i].count;
+            for (size_t i = 0; i < unique_count; ++i) {
+                acc += unique[i].count;
+                if (acc * 2 >= total) { mid = i + 1; break; }
+            }
+            boxes.push(Box{0, mid ? mid : 1});
+            boxes.push(Box{mid ? mid : 1, unique_count});
+        }
         while (boxes.size() < max_colors) {
             Box b = boxes.top();
             boxes.pop();
@@ -226,6 +244,29 @@ bool quantize_indexed(const uint8_t* bgra, uint32_t w, uint32_t h,
         // центроиды боксов -> палитра (sRGB)
         uint32_t pal_count = 0;
         std::vector<Oklab> pal_lab;
+        if (force_bw) {
+            // жёстко чёрный и белый
+            while (!boxes.empty()) {
+                const Box& b = boxes.top();
+                float L = 0;
+                uint64_t wsum = 0;
+                for (size_t i = b.begin; i < b.end; ++i) {
+                    const auto& uc = unique[order[i]];
+                    L += uc.lab.L * (float)uc.count;
+                    wsum += uc.count;
+                }
+                uint8_t rgb[3] = {0, 0, 0};
+                if (wsum && (L / (float)wsum) > 0.5f) {
+                    rgb[0] = rgb[1] = rgb[2] = 255;
+                }
+                out.palette.push_back(rgb[0]);
+                out.palette.push_back(rgb[1]);
+                out.palette.push_back(rgb[2]);
+                pal_lab.push_back(srgb_to_oklab(rgb[0], rgb[1], rgb[2]));
+                ++pal_count;
+                boxes.pop();
+            }
+        } else {
         while (!boxes.empty()) {
             const Box& b = boxes.top();
             float L = 0, A = 0, B = 0;
@@ -249,6 +290,7 @@ bool quantize_indexed(const uint8_t* bgra, uint32_t w, uint32_t h,
             ++pal_count;
             boxes.pop();
         }
+        }
 
         // --- k-means (3 итерации, ΔE = квадрат расстояния в Oklab) ---
         // палитра хранится как sRGB-байты (то, что попадёт в файл);
@@ -257,7 +299,7 @@ bool quantize_indexed(const uint8_t* bgra, uint32_t w, uint32_t h,
             float dl = x.L - y.L, da = x.a - y.a, db = x.b - y.b;
             return dl * dl + da * da + db * db;
         };
-        for (int iter = 0; iter < 3; ++iter) {
+        for (int iter = 0; !force_bw && iter < 3; ++iter) {
             // пересчитать pal_lab из текущих sRGB-байтов палитры
             pal_lab.clear();
             for (uint32_t i = 0; i < pal_count; ++i) {
@@ -383,9 +425,10 @@ bool quantize_indexed(const uint8_t* bgra, uint32_t w, uint32_t h,
             }
             out.indices[i] = (uint8_t)best;
 
-            // распространение ошибки (значения ПАЛИТРЫ минус adj)
+            // распространение ошибки: старое значение минус новое
+            // (adj минус выбранный цвет палитры)
             for (int c = 0; c < 3; ++c) {
-                float e = (float)chosen[c] - adj[c];
+                float e = adj[c] - (float)chosen[c];
                 if (x + 1 < w) err_cur[o + 3 + c] += e * matrix[0];
                 if (y + 1 < h) {
                     if (x > 0) err_next[o - 3 + c] += e * matrix[1];

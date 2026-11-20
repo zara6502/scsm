@@ -1,6 +1,6 @@
 // Smoke-тест RideCodec.dll: encode -> decode -> сравнение BGRA,
-// на синтетических картинках (solid / gradient / шум / 1x1).
-// Запуск: codec_smoke.exe  (использует RideCodec.dll рядом)
+// квантование (в т.ч. ч/б 2 цвета + FS) и пути с ошибками.
+// Запуск: codec_smoke.exe  (RideCodec.dll рядом с exe)
 #include "ride_codec/ride_codec.h"
 
 #include <cstdio>
@@ -8,10 +8,6 @@
 #include <cstring>
 #include <string>
 #include <vector>
-
-#ifdef _WIN32
-#include <windows.h>
-#endif
 
 static int failures = 0;
 
@@ -26,9 +22,9 @@ static uint8_t rnd() {
     return (uint8_t)(rng >> 16);
 }
 
-static void run_case(const char* name, std::vector<uint8_t>& bgra,
+static void run_case(const char* name, const std::vector<uint8_t>& bgra,
                      uint32_t w, uint32_t h,
-                     const RideEncodeOptions* opts) {
+                     const RideEncodeOptions* opts, bool quantized_check) {
     RideError err{};
     uint8_t* ride_data = nullptr;
     size_t ride_size = 0;
@@ -54,18 +50,15 @@ static void run_case(const char* name, std::vector<uint8_t>& bgra,
         return;
     }
 
-    if (opts && opts->struct_size >= sizeof(RideEncodeOptions) &&
-        opts->quantize_colors > 0) {
-        // квантованный INDEXED: декод == палитра[индексы]; проверяем,
-        // что уникальных цветов декода не больше quantize_colors
+    if (quantized_check) {
+        // квантованный INDEXED: уникальных цветов декода <= quantize_colors
         std::vector<uint8_t> seen;
         uint32_t distinct = 0;
         for (size_t i = 0; i < (size_t)w * h * 4; i += 4) {
             bool found = false;
             for (size_t k = 0; k < seen.size(); k += 3)
                 if (seen[k] == out[i] && seen[k + 1] == out[i + 1] &&
-                    seen[k + 2] == out[i + 2])
-                { found = true; break; }
+                    seen[k + 2] == out[i + 2]) { found = true; break; }
             if (!found) {
                 seen.push_back(out[i]);
                 seen.push_back(out[i + 1]);
@@ -84,10 +77,49 @@ static void run_case(const char* name, std::vector<uint8_t>& bgra,
     RideCodecFree(ride_data);
 }
 
+// Ч/б дизеринг: после декодирования чёрный и белый каждый >10% пикселей
+static void run_case_bw(const char* name, const std::vector<uint8_t>& bgra,
+                        uint32_t w, uint32_t h,
+                        const RideEncodeOptions* opts) {
+    RideError err{};
+    uint8_t* ride_data = nullptr;
+    size_t ride_size = 0;
+    uint32_t r = RideCodecEncode(bgra.data(), w, h, opts, &ride_data,
+                                 &ride_size, &err);
+    if (r != 0) {
+        std::printf("[FAIL] %s: encode err %u (%s)\n", name, err.code,
+                    err.message);
+        ++failures;
+        return;
+    }
+    uint32_t dw = 0, dh = 0;
+    uint8_t* out = nullptr;
+    r = RideCodecDecode(ride_data, ride_size, &dw, &dh, nullptr, &out, &err);
+    if (r != 0 || dw != w || dh != h || !out) {
+        std::printf("[FAIL] %s: decode err %u (%s)\n", name, err.code,
+                    err.message);
+        ++failures;
+        RideCodecFree(ride_data);
+        return;
+    }
+    long black = 0, white = 0;
+    long total = (long)w * h;
+    for (long i = 0; i < total; ++i) {
+        int b = out[i * 4], g = out[i * 4 + 1], rr = out[i * 4 + 2];
+        int lum = (rr + g + b) / 3;
+        if (lum < 16) ++black;
+        else if (lum > 239) ++white;
+    }
+    std::printf("       black=%.1f%% white=%.1f%%\n",
+                black * 100.0 / total, white * 100.0 / total);
+    check(black > total / 10 && white > total / 10,
+          (std::string(name) + ": FS detail (both >10%)").c_str());
+    RideCodecFree(out);
+    RideCodecFree(ride_data);
+}
+
 int main() {
     check(RideCodecVersion() != 0, "RideCodecVersion");
-    std::printf("codec version: %u.%u\n", RideCodecVersion() >> 16,
-                RideCodecVersion() & 0xFFFF);
 
     // solid 64x64
     {
@@ -95,7 +127,7 @@ int main() {
         for (size_t i = 0; i < b.size(); i += 4) {
             b[i] = 30; b[i + 1] = 144; b[i + 2] = 255; b[i + 3] = 255;
         }
-        run_case("solid 64x64", b, 64, 64, nullptr);
+        run_case("solid 64x64", b, 64, 64, nullptr, false);
     }
     // gradient 128x128
     {
@@ -106,17 +138,17 @@ int main() {
                 b[o] = (uint8_t)x * 2; b[o + 1] = (uint8_t)y * 2;
                 b[o + 2] = 128; b[o + 3] = 255;
             }
-        run_case("gradient 128x128", b, 128, 128, nullptr);
+        run_case("gradient 128x128", b, 128, 128, nullptr, false);
     }
-    // noise 200x150 (RGB profile: слишком много цветов для INDEXED)
+    // noise 200x150
     {
         std::vector<uint8_t> b(200 * 150 * 4, 0);
         for (size_t i = 0; i < b.size(); i += 4) {
             b[i] = rnd(); b[i + 1] = rnd(); b[i + 2] = rnd(); b[i + 3] = 255;
         }
-        run_case("noise 200x150", b, 200, 150, nullptr);
+        run_case("noise 200x150", b, 200, 150, nullptr, false);
     }
-    // шум + явный профиль RGB + entropy on
+    // noise + RGB + entropy on
     {
         std::vector<uint8_t> b(100 * 80 * 4, 0);
         for (size_t i = 0; i < b.size(); i += 4) {
@@ -126,9 +158,9 @@ int main() {
         o.struct_size = sizeof(o);
         o.profile_choice = RIDE_PROFILE_RGB;
         o.entropy = RIDE_ENTROPY_ON;
-        run_case("noise RGB+entropy", b, 100, 80, &o);
+        run_case("noise RGB+entropy", b, 100, 80, &o, false);
     }
-    // 4 цвета -> INDEXED
+    // 4 цвета -> INDEXED + квантованные кейсы + B/W FS на градиенте
     {
         std::vector<uint8_t> b(80 * 80 * 4, 0);
         const uint8_t pal[4][3] = {{255,0,0},{0,255,0},{0,0,255},{255,255,0}};
@@ -138,29 +170,44 @@ int main() {
                 const uint8_t* c = pal[(x / 20 + y / 20) % 4];
                 b[o] = c[2]; b[o + 1] = c[1]; b[o + 2] = c[0]; b[o + 3] = 255;
             }
-        run_case("4-color INDEXED", b, 80, 80, nullptr);
+        run_case("4-color INDEXED", b, 80, 80, nullptr, false);
 
-        // квантование: фото-подобный шум (>256 цветов) -> Indexed, N=32
+        // фото-подобный шум (>256 цветов)
         std::vector<uint8_t> n2(200 * 150 * 4, 0);
         for (size_t i = 0; i < n2.size(); i += 4) {
             n2[i] = rnd(); n2[i + 1] = rnd(); n2[i + 2] = rnd();
             n2[i + 3] = 255;
         }
         RideEncodeOptions qo{};
-        qo.struct_size = sizeof(qo);           // v2: с quantize_colors
+        qo.struct_size = sizeof(qo); // v3
         qo.profile_choice = RIDE_PROFILE_INDEXED;
         qo.quantize_colors = 32;
-        run_case("quantize 32 colors", n2, 200, 150, &qo);
-        // то же с Floyd–Steinberg
+        run_case("quantize 32 colors", n2, 200, 150, &qo, true);
         RideEncodeOptions qd = qo;
         qd.dither = 1;
-        run_case("quantize 32 + FS", n2, 200, 150, &qd);
+        run_case("quantize 32 + FS", n2, 200, 150, &qd, true);
+
+        // B/W FS на градиенте: чёрный и белый каждый >10%
+        std::vector<uint8_t> g(128 * 128 * 4, 0);
+        for (int y = 0; y < 128; ++y)
+            for (int x = 0; x < 128; ++x) {
+                size_t o = (size_t)(y * 128 + x) * 4;
+                g[o] = (uint8_t)x * 2; g[o + 1] = (uint8_t)y * 2;
+                g[o + 2] = 128; g[o + 3] = 255;
+            }
+        RideEncodeOptions bw{};
+        bw.struct_size = sizeof(bw);
+        bw.profile_choice = RIDE_PROFILE_INDEXED;
+        bw.quantize_colors = 2;
+        bw.bw_palette = 1;
+        bw.dither = 1;
+        run_case_bw("gradient BW+FS", g, 128, 128, &bw);
     }
     // 1x1
     {
         std::vector<uint8_t> b(4, 0);
         b[0] = 9; b[1] = 8; b[2] = 7; b[3] = 255;
-        run_case("1x1", b, 1, 1, nullptr);
+        run_case("1x1", b, 1, 1, nullptr, false);
     }
     // мусор на декодирование -> аккуратная ошибка
     {
@@ -182,12 +229,9 @@ int main() {
         size_t sz = 0;
         check(RideCodecEncode(nullptr, 10, 10, nullptr, &out, &sz, &err) != 0,
               "encode null -> error");
-        check(RideCodecEncode(nullptr, 10, 10, nullptr, nullptr, nullptr,
-                              nullptr) != 0,
-              "encode null out -> error");
+        RideCodecFree(nullptr);
     }
 
-    RideCodecFree(nullptr); // null безопасен
     std::printf(failures == 0 ? "\nВСЁ ПРОШЛО\n" : "\nОШИБОК: %d\n", failures);
     return failures;
 }

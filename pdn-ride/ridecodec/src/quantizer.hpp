@@ -19,7 +19,7 @@ size_t count_unique_colors(const uint8_t* bgra, uint32_t w, uint32_t h);
 // dither: Floyd–Steinberg при фактическом квантовании.
 // Возвращает false при нехватке памяти.
 bool quantize_indexed(const uint8_t* bgra, uint32_t w, uint32_t h,
-                      uint32_t max_colors, bool dither,
+                      uint32_t max_colors, bool dither, bool bw_palette,
                       ride::IndexedImage& out);
 
 } // namespace rideq
