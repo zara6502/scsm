@@ -2,55 +2,28 @@
 
   <PropertyGroup>
     <TargetFramework>net11.0-windows</TargetFramework>
-    <UseWindowsForms>true</UseWindowsForms>
     <AssemblyName>PdnQoi</AssemblyName>
     <RootNamespace>PdnQoi</RootNamespace>
     <Nullable>disable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <ImplicitUsings>disable</ImplicitUsings>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
-    <Version>1.0.0</Version>
-    <!-- скрывать сборку из домена по умолчанию не нужно; плагин грузится PDN -->
+    <Version>1.1.0</Version>
+    <ProduceReferenceAssembly>false</ProduceReferenceAssembly>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
   </PropertyGroup>
 
   <ItemGroup>
     <Compile Include="QoiFileType.cs" />
+    <Compile Include="QoiFileTypeFactory.cs" />
+    <Compile Include="SpanExtensions.cs" />
     <Compile Include="..\QoiCodecLib\QoiCodec.cs" Link="QoiCodec.cs" />
-    <Compile Include="PluginSetup.cs" />
   </ItemGroup>
 
   <ItemGroup>
-    <Reference Include="PaintDotNet.Fundamentals">
-      <HintPath>C:\Program Files\Paint.NET\PaintDotNet.Fundamentals.dll</HintPath>
-      <Private>false</Private>
-    </Reference>
-    <Reference Include="PaintDotNet.ComponentModel">
-      <HintPath>C:\Program Files\Paint.NET\PaintDotNet.ComponentModel.dll</HintPath>
-      <Private>false</Private>
-    </Reference>
-    <Reference Include="PaintDotNet.Collections">
-      <HintPath>C:\Program Files\Paint.NET\PaintDotNet.Collections.dll</HintPath>
-      <Private>false</Private>
-    </Reference>
-  </ItemGroup>
-
-  <ItemGroup>
-    <Reference Include="PaintDotNet.Primitives">
-      <HintPath>C:\Program Files\Paint.NET\PaintDotNet.Primitives.dll</HintPath>
-      <Private>false</Private>
-    </Reference>
-    <Reference Include="PaintDotNet.Base">
-      <HintPath>C:\Program Files\Paint.NET\PaintDotNet.Base.dll</HintPath>
-      <Private>false</Private>
-    </Reference>
-    <Reference Include="PaintDotNet.Core">
-      <HintPath>C:\Program Files\Paint.NET\PaintDotNet.Core.dll</HintPath>
-      <Private>false</Private>
-    </Reference>
-    <Reference Include="PaintDotNet.Data">
-      <HintPath>C:\Program Files\Paint.NET\PaintDotNet.Data.dll</HintPath>
-      <Private>false</Private>
-    </Reference>
+    <!-- Официальный SDK Paint.NET: приносит reference-сборки PaintDotNet.*.
+         Версия *-* = всегда последняя (рекомендация paintdotnet). -->
+    <PackageReference Include="Paint.NET.Plugin.SDK" Version="*-*" />
   </ItemGroup>
 
 </Project>
