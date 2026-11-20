@@ -211,8 +211,9 @@ public sealed class RideFileType : PropertyBasedFileType
         opts.QuantizeColors = profile == RideProfile.Indexed
             ? (uint)quantizeColors
             : 0u;
-        // FS и B/W-палитра имеют смысл только при 2 цветах
-        opts.Dither = dither && quantizeColors == 2 ? 1 : 0;
+        // FS — при любом фактическом квантовании;
+        // B/W-палитра — только при 2 цветах
+        opts.Dither = dither ? 1 : 0;
         opts.BwPalette = bwPalette && quantizeColors == 2 ? 1 : 0;
         opts.BlockPixels = blockSize switch
         {
