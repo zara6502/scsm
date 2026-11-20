@@ -14,8 +14,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\QoiCodecLib\QoiCodecLib.csproj" />
     <Compile Include="QoiFileType.cs" />
+    <Compile Include="..\QoiCodecLib\QoiCodec.cs" Link="QoiCodec.cs" />
     <Compile Include="PluginSetup.cs" />
   </ItemGroup>
 
