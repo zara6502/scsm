@@ -1,0 +1,56 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net11.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <AssemblyName>PdnQoi</AssemblyName>
+    <RootNamespace>PdnQoi</RootNamespace>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <Version>1.0.0</Version>
+    <!-- скрывать сборку из домена по умолчанию не нужно; плагин грузится PDN -->
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\QoiCodecLib\QoiCodecLib.csproj" />
+    <Compile Include="QoiFileType.cs" />
+    <Compile Include="PluginSetup.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="PaintDotNet.Fundamentals">
+      <HintPath>C:\Program Files\Paint.NET\PaintDotNet.Fundamentals.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="PaintDotNet.ComponentModel">
+      <HintPath>C:\Program Files\Paint.NET\PaintDotNet.ComponentModel.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="PaintDotNet.Collections">
+      <HintPath>C:\Program Files\Paint.NET\PaintDotNet.Collections.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="PaintDotNet.Primitives">
+      <HintPath>C:\Program Files\Paint.NET\PaintDotNet.Primitives.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="PaintDotNet.Base">
+      <HintPath>C:\Program Files\Paint.NET\PaintDotNet.Base.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="PaintDotNet.Core">
+      <HintPath>C:\Program Files\Paint.NET\PaintDotNet.Core.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="PaintDotNet.Data">
+      <HintPath>C:\Program Files\Paint.NET\PaintDotNet.Data.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+</Project>
