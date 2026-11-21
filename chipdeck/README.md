@@ -14,6 +14,12 @@
     libopenmpt 0.8.10: трекерные форматы MOD/S3M/XM/IT/MTM/MO3/...
     (полный список в extensions движка), sub-songs, честная длительность,
     Seek.
+  - [engine_vorbis](plugins/engine_vorbis) — **рабочий движок** на
+    stb_vorbis (nothings/stb, public domain): Ogg Vorbis (.ogg).
+    Потоковое блочное декодирование, линейный ресемплинг файловой
+    частоты под частоту host'а, mono -> stereo, Seek, метаданные TITLE/
+    ARTIST из Vorbis-комментариев. Самодостаточная DLL ~650 КБ
+    (KERNEL32 + UCRT).
   - [engine_stub](plugins/engine_stub) — заглушка для проверки ABI.
 - **ChipLibrary** (`plugins/`) — провайдеры онлайн-библиотек.
   - [lib_botb](plugins/lib_botb) — **рабочий плагин** Battle of the Bits
@@ -41,6 +47,12 @@ cd ../engine_gme
 bash build-deps.sh   # статическая libgme 0.6.5 → deps/inst
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release && cmake --build build
 ./build/gme_test.exe build/Engines/engine_gme.dll <файл.ay|файл.sap> out.wav
+
+# Рабочий движок Ogg Vorbis — зависимости не нужны, stb_vorbis.c в
+# plugins/engine_vorbis/stb/
+cd ../engine_vorbis
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release && cmake --build build
+./build/vb_test.exe build/Engines/engine_vorbis.dll <файл.ogg> out.wav
 
 # Рабочий движок SID (C64) — нужны autotools в MSYS2 (pacman -S autoconf
 # automake libtool pkgconf) и xa65 в PATH (см. build-deps.sh)
