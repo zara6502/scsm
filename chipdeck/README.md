@@ -14,6 +14,10 @@
     libopenmpt 0.8.10: трекерные форматы MOD/S3M/XM/IT/MTM/MO3/...
     (полный список в extensions движка), sub-songs, честная длительность,
     Seek.
+  - [engine_dr](plugins/engine_dr) — **рабочий движок** на dr_libs
+    (single-header, public domain): MP3 (.mp3), FLAC (.flac), WAV (.wav).
+    Линейный ресемплинг файловой частоты под частоту host'а, mono →
+    stereo, Seek. Самодостаточная DLL ~550 КБ (KERNEL32 + UCRT).
   - [engine_stub](plugins/engine_stub) — заглушка для проверки ABI.
 - **ChipLibrary** (`plugins/`) — провайдеры онлайн-библиотек.
   - [lib_botb](plugins/lib_botb) — **рабочий плагин** Battle of the Bits
@@ -41,6 +45,12 @@ cd ../engine_gme
 bash build-deps.sh   # статическая libgme 0.6.5 → deps/inst
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release && cmake --build build
 ./build/gme_test.exe build/Engines/engine_gme.dll <файл.ay|файл.sap> out.wav
+
+# Рабочий движок dr_libs (MP3/FLAC/WAV) — зависимости не нужны,
+# single-header библиотеки уже в plugins/engine_dr/dr/
+cd ../engine_dr
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release && cmake --build build
+./build/dr_test.exe build/Engines/engine_dr.dll <файл.mp3|файл.flac|файл.wav> out.wav
 
 # Рабочий движок SID (C64) — нужны autotools в MSYS2 (pacman -S autoconf
 # automake libtool pkgconf) и xa65 в PATH (см. build-deps.sh)
