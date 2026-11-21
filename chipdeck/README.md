@@ -14,6 +14,11 @@
     libopenmpt 0.8.10: трекерные форматы MOD/S3M/XM/IT/MTM/MO3/...
     (полный список в extensions движка), sub-songs, честная длительность,
     Seek.
+  - [engine_qoa](plugins/engine_qoa) — **рабочий движок** на QOA
+    (phoboslab, MIT): lossy-кодек Quite OK Audio (.qoa). Файл декодируется
+    в память при Open (файлы компактны, ~4:1), Seek и ресемплинг
+    (линейный, файловая частота -> частота host'а). Самодостаточная DLL
+    ~550 КБ (KERNEL32 + UCRT). В комплекте wav2qoa — конвертер WAV в QOA.
   - [engine_stub](plugins/engine_stub) — заглушка для проверки ABI.
 - **ChipLibrary** (`plugins/`) — провайдеры онлайн-библиотек.
   - [lib_botb](plugins/lib_botb) — **рабочий плагин** Battle of the Bits
