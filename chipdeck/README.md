@@ -14,6 +14,13 @@
     libopenmpt 0.8.10: трекерные форматы MOD/S3M/XM/IT/MTM/MO3/...
     (полный список в extensions движка), sub-songs, честная длительность,
     Seek.
+  - [engine_opus](plugins/engine_opus) — **рабочий движок** на opusfile
+    (xiph, BSD) + libopus + libogg (статические, MSYS2): Ogg Opus
+    (.opus, .ogg, .oga). Opus декодируется в 48 кГц, дальше линейный
+    ресемплинг под частоту host'а, mono -> stereo, Seek, метаданные
+    TITLE/ARTIST из OpusTags. Самодостаточная DLL ~850 КБ
+    (KERNEL32 + UCRT). Зависимости: bash build-deps.sh (собирает
+    opusfile; libopus/libogg из системы MSYS2).
   - [engine_stub](plugins/engine_stub) — заглушка для проверки ABI.
 - **ChipLibrary** (`plugins/`) — провайдеры онлайн-библиотек.
   - [lib_botb](plugins/lib_botb) — **рабочий плагин** Battle of the Bits

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Собирает готовый к копированию дистрибутив: dist/ChipDeck/
 #   chipdeck_host.exe
-#   Engines/   — DLL движков (gme, sidplayfp, openmpt)
+#   Engines/   — DLL движков (gme, sidplayfp, openmpt, opus)
 #   Libraries/ — DLL библиотечных плагинов (botb)
 #   README.txt — короткая инструкция
 # Предполагается, что все проекты уже собраны (cmake --build <build>).
@@ -15,7 +15,7 @@ mkdir -p "$DIST/Engines" "$DIST/Libraries" "$DIST/Skin"
 
 cp "$ROOT/host/build/chipdeck_host.exe" "$DIST/"
 
-for eng in engine_gme engine_sidplayfp engine_openmpt engine_stub; do
+for eng in engine_gme engine_sidplayfp engine_openmpt engine_opus engine_stub; do
   src="$ROOT/plugins/$eng/build/Engines/$eng.dll"
   [ -f "$src" ] && cp "$src" "$DIST/Engines/" || echo "SKIP (не собран): $eng"
 done
