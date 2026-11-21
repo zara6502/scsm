@@ -5,8 +5,13 @@
 - **ChipEngine** (`plugins/`) — движки-декодеры чипов (AY, SID, POKEY...):
   файл → поток PCM.
   - [engine_gme](plugins/engine_gme) — **рабочий движок** на libgme 0.6.5:
-    ZX Spectrum AY (.ay, .emul) и Atari POKEY (.sap), статическая линковка,
-    самодостаточная DLL ~700 КБ (KERNEL32 + UCRT).
+    ZX Spectrum AY (.ay, .emul), Atari POKEY (.sap), NES (.nsf, .nsfe),
+    SNES (.spc), Sega (.vgm, .vgz, .gym), PC Engine (.hes), MSX (.kss),
+    Game Boy (.gbs). Пакованный GYM (GYMX + zlib) распаковывается
+    автоматически (статический zlib). Статическая линковка,
+    самодостаточная DLL ~1.1 МБ (KERNEL32 + UCRT).
+    Ограничение: KSS с FM-чипами (OPLL) libgme 0.6.5 рендерит тишиной —
+    рабочие KSS построены на SCC.
   - [engine_sidplayfp](plugins/engine_sidplayfp) — **рабочий движок** на
     libsidplayfp 3.1.2 + libresidfp 1.3.0: C64 SID (.sid, PSID/RSID),
     модель чипа из заголовка тюна, mono → stereo.

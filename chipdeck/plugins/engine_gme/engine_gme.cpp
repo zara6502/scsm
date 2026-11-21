@@ -11,6 +11,8 @@
 
 #include "gme/gme.h"
 
+#include <zlib.h> // распаковка пакованного GYM (GYMX + deflate)
+
 namespace {
 
 // Коды ошибок движка gme (>= 16, базовые CHP_ERR_* не пересекаются).
@@ -52,9 +54,62 @@ void close_session(Session* s) {
 // Форматы, которые берёт на себя этот движок (остальные форматы GME
 // отключены в сборке и должны оставаться чужим полем деятельности).
 bool format_supported(const char* fmt) {
-    return fmt && (std::strcmp(fmt, "AY") == 0 || std::strcmp(fmt, "SAP") == 0 ||
-                   std::strcmp(fmt, "NSF") == 0 ||
-                   std::strcmp(fmt, "NSFE") == 0);
+    return fmt &&
+           (std::strcmp(fmt, "AY") == 0 || std::strcmp(fmt, "SAP") == 0 ||
+            std::strcmp(fmt, "NSF") == 0 || std::strcmp(fmt, "NSFE") == 0 ||
+            std::strcmp(fmt, "SPC") == 0 || std::strcmp(fmt, "VGM") == 0 ||
+            std::strcmp(fmt, "VGZ") == 0 ||
+            std::strcmp(fmt, "GYM") == 0 || std::strcmp(fmt, "HES") == 0 ||
+            std::strcmp(fmt, "KSS") == 0 || std::strcmp(fmt, "GBS") == 0);
+}
+
+// Пакованный GYM: "GYMX" + 428-байтовый заголовок + zlib-поток. libgme
+// такие не берёт — распаковываем deflate и пересобираем как непакованный
+// GYMX (тот же заголовок с нулевым флагом packed + сырой GYM-поток),
+// чтобы сработал и gme_open_data, и метаданные из заголовка.
+constexpr size_t kGymHeaderSize = 428;
+constexpr size_t kGymPackedOffset = 424; // packed[4] в конце заголовка
+
+bool unpack_packed_gym(std::vector<uint8_t>& data) {
+    if (data.size() <= kGymHeaderSize + 2) return false;
+    if (std::memcmp(data.data(), "GYMX", 4) != 0) return false;
+    // флаг packed != 0 и zlib-сигнатура сразу после заголовка
+    if (data[kGymPackedOffset] == 0 && data[kGymPackedOffset + 1] == 0 &&
+        data[kGymPackedOffset + 2] == 0 && data[kGymPackedOffset + 3] == 0)
+        return false; // не пакованный — gme сам его съест
+
+    z_stream zs;
+    std::memset(&zs, 0, sizeof(zs));
+    if (inflateInit(&zs) != Z_OK) return false;
+    zs.next_in = data.data() + kGymHeaderSize;
+    zs.avail_in = uInt(data.size() - kGymHeaderSize);
+
+    std::vector<uint8_t> out;
+    uint8_t chunk[65536];
+    int rc = Z_OK;
+    do {
+        zs.next_out = chunk;
+        zs.avail_out = sizeof(chunk);
+        rc = inflate(&zs, Z_NO_FLUSH);
+        if (rc != Z_OK && rc != Z_STREAM_END && rc != Z_BUF_ERROR) {
+            inflateEnd(&zs);
+            return false;
+        }
+        out.insert(out.end(), chunk, chunk + (sizeof(chunk) - zs.avail_out));
+    } while (rc != Z_STREAM_END);
+    inflateEnd(&zs);
+
+    if (out.empty() || out[0] > 3) return false; // не похоже на GYM-поток
+    // Пересобираем как непакованный GYMX: исходный заголовок с packed=0.
+    std::vector<uint8_t> packed_zero(data.begin(),
+                                     data.begin() + kGymHeaderSize);
+    packed_zero[kGymPackedOffset] = 0;
+    packed_zero[kGymPackedOffset + 1] = 0;
+    packed_zero[kGymPackedOffset + 2] = 0;
+    packed_zero[kGymPackedOffset + 3] = 0;
+    packed_zero.insert(packed_zero.end(), out.begin(), out.end());
+    data.swap(packed_zero);
+    return true;
 }
 
 } // namespace
@@ -69,11 +124,11 @@ CHP_EXPORT uint32_t CHP_CALL ChipEngineGetInfo(ChipEngineInfo* info) {
     info->api_version = CHP_API_VERSION;
     std::snprintf(info->id, sizeof(info->id), "%s", "gme");
     std::snprintf(info->name, sizeof(info->name), "%s",
-                  "GME (ZX AY / Atari POKEY)");
+                  "GME (ZX AY / Atari POKEY / NES / SNES / Sega / PC Engine / MSX / GB)");
     // .emul — вариант именования .ay на ModLand; Probe распознаёт по
     // содержимому (ZXAYEMUL), расширение влияет только на фильтр диалога.
     std::snprintf(info->extensions, sizeof(info->extensions), "%s",
-                  "ay;emul;sap");
+                  "ay;emul;sap;nsf;nsfe;spc;vgm;vgz;gym;hes;kss;gbs");
     return 1;
 }
 
@@ -107,6 +162,7 @@ CHP_EXPORT uint32_t CHP_CALL ChipEngineOpen(const uint8_t* data, size_t size,
 
     // Открываем emu сразу: GetTrackCount/GetTrackInfo должны работать
     // до первого Select. Select при смене частоты переоткроет.
+    unpack_packed_gym(s->data); // пакованный GYM -> сырой поток
     gme_err_t e = gme_open_data(s->data.data(), long(s->data.size()), &s->emu,
                                 kDefaultRate);
     if (e) {
@@ -234,6 +290,24 @@ CHP_EXPORT uint32_t CHP_CALL ChipEngineGetTrackInfo(ChipHandle handle,
     } else if (std::strcmp(s->format, "SAP") == 0) {
         std::snprintf(info->format, sizeof(info->format), "%s",
                       "SAP (Atari POKEY)");
+    } else if (std::strcmp(s->format, "SPC") == 0) {
+        std::snprintf(info->format, sizeof(info->format), "%s",
+                      "SPC (SNES)");
+    } else if (std::strcmp(s->format, "VGM") == 0) {
+        std::snprintf(info->format, sizeof(info->format), "%s",
+                      "VGM (arcade/console)");
+    } else if (std::strcmp(s->format, "GYM") == 0) {
+        std::snprintf(info->format, sizeof(info->format), "%s",
+                      "GYM (Sega Mega Drive)");
+    } else if (std::strcmp(s->format, "HES") == 0) {
+        std::snprintf(info->format, sizeof(info->format), "%s",
+                      "HES (PC Engine)");
+    } else if (std::strcmp(s->format, "KSS") == 0) {
+        std::snprintf(info->format, sizeof(info->format), "%s",
+                      "KSS (MSX)");
+    } else if (std::strcmp(s->format, "GBS") == 0) {
+        std::snprintf(info->format, sizeof(info->format), "%s",
+                      "GBS (Game Boy)");
     } else {
         std::snprintf(info->format, sizeof(info->format), "%s", "NSF (NES)");
     }

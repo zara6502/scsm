@@ -19,7 +19,11 @@ target_compile_features(engine_gme PRIVATE cxx_std_17)
 target_compile_definitions(engine_gme PRIVATE
   CHP_BUILD WIN32_LEAN_AND_MEAN NOMINMAX
 )
-target_link_libraries(engine_gme PRIVATE "${GME_DEPS_PREFIX}/lib/libgme.a")
+target_link_libraries(engine_gme PRIVATE
+  "${GME_DEPS_PREFIX}/lib/libgme.a"
+  # zlib: статическая (libz.a) для самодостаточности DLL (VGZ)
+  C:/msys64/ucrt64/lib/libz.a
+)
 if(MINGW)
   target_link_options(engine_gme PRIVATE
     -static -static-libgcc -static-libstdc++
